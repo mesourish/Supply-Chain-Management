@@ -285,5 +285,24 @@ class DummyDataSeeder extends Seeder
             }
         }
         DB::table('shipments')->insert($shipments);
+
+        // Purchase Expenses
+        $expenses = [];
+        $expenseCategories = ['Shipping & Logistics', 'Customs & Duty', 'Office Supplies', 'Travel', 'Software/IT'];
+        for ($i = 0; $i < 15; $i++) {
+            $linkType = $faker->randomElement(['po', 'supplier', 'none']);
+            $expenses[] = [
+                'purchase_order_id' => $linkType === 'po' && !empty($poIds) ? $faker->randomElement($poIds) : null,
+                'supplier_id' => $linkType === 'supplier' && !empty($supplierIds) ? $faker->randomElement($supplierIds) : null,
+                'category' => $faker->randomElement($expenseCategories),
+                'amount' => $faker->randomFloat(2, 50, 2000),
+                'expense_date' => clone $now->subDays(rand(1, 60)),
+                'reference_number' => $faker->bothify('EXP-####-???'),
+                'notes' => $faker->sentence,
+                'created_at' => clone $now,
+                'updated_at' => clone $now,
+            ];
+        }
+        DB::table('expenses')->insert($expenses);
     }
 }

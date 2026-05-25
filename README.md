@@ -35,13 +35,38 @@ A robust, full-featured Supply Chain Management (SCM) ERP built with **Laravel 1
 
 ## 🚀 Installation Guide
 
-### Prerequisites
-- PHP >= 8.2
-- Composer
-- Node.js & NPM
-- MySQL / MariaDB
+### Option 1: Docker (Laravel Sail) - *Recommended*
+If you have Docker Desktop installed, you can spin up the entire application (PHP, MySQL, Redis) without installing anything else on your local machine.
 
-### Local Setup
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/scm-erp.git
+   cd scm-erp
+   ```
+2. **Install Composer Dependencies** (Using a small Docker container)
+   ```bash
+   docker run --rm \
+       -u "$(id -u):$(id -g)" \
+       -v "$(pwd):/var/www/html" \
+       -w /var/www/html \
+       laravelsail/php82-composer:latest \
+       composer install --ignore-platform-reqs
+   ```
+3. **Setup Environment & Start Sail**
+   ```bash
+   cp .env.example .env
+   ./vendor/bin/sail up -d
+   ```
+4. **Generate Key, Migrate & Seed**
+   ```bash
+   ./vendor/bin/sail artisan key:generate
+   ./vendor/bin/sail artisan migrate --seed
+   ./vendor/bin/sail npm install
+   ./vendor/bin/sail npm run build
+   ```
+   Visit `http://localhost` to log in!
+
+### Option 2: Local Setup (Valet, XAMPP, etc.)
 1. **Clone the Repository**
    ```bash
    git clone https://github.com/YOUR_USERNAME/scm-erp.git
