@@ -1,0 +1,248 @@
+
+<?php
+
+use function Livewire\Volt\{state, mount, usesFileUploads};
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+usesFileUploads();
+
+state([
+    'currency_symbol' => '$',
+    'showClearDataConfirm' => false,
+    'website_name' => '',
+    'website_logo' => null,
+    'time_format' => 'H:i',
+    'date_format' => 'Y-m-d',
+    'company_location' => '',
+    'invoice_prefix' => 'INV-',
+    'sales_order_prefix' => 'SO-',
+]);
+
+mount(function () {
+    if (!auth()->user()->can('manage users') && !auth()->user()->hasRole('Super Admin')) abort(403);
+    $this->currency_symbol = setting('currency_symbol', '$');
+    $this->website_name = setting('website_name', 'SCM ERP');
+    $this->time_format = setting('time_format', 'H:i');
+    $this->date_format = setting('date_format', 'Y-m-d');
+    $this->company_location = setting('company_location', '');
+    $this->invoice_prefix = setting('invoice_prefix', 'INV-');
+    $this->sales_order_prefix = setting('sales_order_prefix', 'SO-');
+});
+
+$saveSettings = function () {
+    if (!auth()->user()->can('manage users') && !auth()->user()->hasRole('Super Admin')) abort(403);
+    
+    set_setting('currency_symbol', $this->currency_symbol);
+    set_setting('website_name', $this->website_name);
+    set_setting('time_format', $this->time_format);
+    set_setting('date_format', $this->date_format);
+    set_setting('company_location', $this->company_location);
+    set_setting('invoice_prefix', $this->invoice_prefix);
+    set_setting('sales_order_prefix', $this->sales_order_prefix);
+
+    if ($this->website_logo) {
+        $path = $this->website_logo->store('logos', 'public');
+        set_setting('website_logo', '/storage/' . $path);
+    }
+
+    session()->flash('message', 'Settings updated successfully.');
+};
+
+$clearData = function () {
+    if (!auth()->user()->hasRole('Super Admin')) abort(403, 'Only Super Admin can clear data.');
+    
+    DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+    $tables = [
+        'account_payables', 'account_receivables', 'customers', 'drivers', 
+        'goods_receipt_note_items', 'goods_receipt_notes', 'inventory_adjustments', 
+        'inventory_logs', 'invoice_items', 'invoices', 'payment_logs', 
+        'products', 'purchase_order_items', 'purchase_orders', 'return_items', 
+        'returns', 'sales_order_items', 'sales_orders', 'shipments', 
+        'suppliers', 'vehicles', 'warehouse_bins', 'warehouse_racks', 
+        'warehouse_zones', 'warehouses'
+    ];
+    foreach ($tables as $table) {
+        if (Schema::hasTable($table)) {
+            DB::table($table)->truncate();
+        }
+    }
+    DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+    
+    session()->flash('danger_message', 'All operational ERP data has been permanently cleared.');
+    $this->showClearDataConfirm = false;
+};
+
+?>
+
+<div>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('System Settings') }}
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+            
+            @if (session()->has('message'))
+                <div class="p-4 mb-4 text-sm text-green-800 rounded-lg bg-green-50" role="alert">
+                    {{ session('message') }}
+                </div>
+            @endif
+
+            @if (session()->has('danger_message'))
+                <div class="p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50" role="alert">
+                    {{ session('danger_message') }}
+                </div>
+            @endif
+
+            <!-- General Settings -->
+            <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
+                <div class="max-w-3xl">
+                    <section>
+                        <header>
+                            <h2 class="text-lg font-medium text-gray-900">
+                                {{ __('General Configuration') }}
+                            </h2>
+                            <p class="mt-1 text-sm text-gray-600">
+                                {{ __("Update your system's global settings and basic info.") }}
+                            </p>
+                        </header>
+
+                        <form wire:submit="saveSettings" class="mt-6 space-y-6">
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <!-- Website Name -->
+                                <div>
+                                    <label for="website_name" class="block text-sm font-medium text-gray-700">Website/App Name</label>
+                                    <input wire:model="website_name" id="website_name" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+                                </div>
+
+                                <!-- Currency Symbol -->
+                                <div>
+                                    <label for="currency_symbol" class="block text-sm font-medium text-gray-700">Currency Symbol</label>
+                                    <input wire:model="currency_symbol" id="currency_symbol" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="$" required />
+                                </div>
+
+                                <!-- Website Logo -->
+                                <div>
+                                    <label for="website_logo" class="block text-sm font-medium text-gray-700">Website Logo</label>
+                                    <input wire:model="website_logo" id="website_logo" type="file" accept="image/*" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+                                    @if(setting('website_logo'))
+                                        <div class="mt-2">
+                                            <span class="text-xs text-gray-500">Current Logo:</span><br>
+                                            <img src="{{ setting('website_logo') }}" class="h-10 mt-1 object-contain" alt="Logo">
+                                        </div>
+                                    @endif
+                                </div>
+
+                                <!-- Company Location -->
+                                <div>
+                                    <label for="company_location" class="block text-sm font-medium text-gray-700">Company Location / Address</label>
+                                    <textarea wire:model="company_location" id="company_location" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"></textarea>
+                                </div>
+
+                                <!-- Date Format -->
+                                <div>
+                                    <label for="date_format" class="block text-sm font-medium text-gray-700">Date Format</label>
+                                    <select wire:model="date_format" id="date_format" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                        <option value="Y-m-d">YYYY-MM-DD</option>
+                                        <option value="d/m/Y">DD/MM/YYYY</option>
+                                        <option value="m/d/Y">MM/DD/YYYY</option>
+                                    </select>
+                                </div>
+
+                                <!-- Time Format -->
+                                <div>
+                                    <label for="time_format" class="block text-sm font-medium text-gray-700">Time Format</label>
+                                    <select wire:model="time_format" id="time_format" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                        <option value="H:i">24-Hour (14:30)</option>
+                                        <option value="h:i A">12-Hour (02:30 PM)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Invoice Prefix -->
+                                <div>
+                                    <label for="invoice_prefix" class="block text-sm font-medium text-gray-700">Invoice Prefix</label>
+                                    <input wire:model="invoice_prefix" id="invoice_prefix" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="INV-" />
+                                </div>
+
+                                <!-- Sales Order Prefix -->
+                                <div>
+                                    <label for="sales_order_prefix" class="block text-sm font-medium text-gray-700">Sales Order Prefix</label>
+                                    <input wire:model="sales_order_prefix" id="sales_order_prefix" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="SO-" />
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-4 mt-8">
+                                <button type="submit" class="inline-flex items-center px-4 py-2 bg-gray-800 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-gray-700 focus:bg-gray-700 active:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150">
+                                    {{ __('Save Settings') }}
+                                </button>
+                                <span wire:loading wire:target="saveSettings" class="text-sm text-gray-500">Saving...</span>
+                            </div>
+                        </form>
+                    </section>
+                </div>
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg border-l-4 border-red-500">
+                <div class="max-w-xl">
+                    <section>
+                        <header>
+                            <h2 class="text-lg font-medium text-red-600">
+                                {{ __('Danger Zone: Clear ERP Data') }}
+                            </h2>
+                            <p class="mt-1 text-sm text-gray-600">
+                                {{ __('This action will wipe all operational data (products, orders, invoices, stock, etc.). Your user accounts, roles, and system settings will NOT be deleted.') }}
+                            </p>
+                        </header>
+
+                        <div class="mt-6">
+                            <button type="button" wire:click="$set('showClearDataConfirm', true)" class="inline-flex items-center justify-center px-4 py-2 bg-red-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-red-500 active:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition ease-in-out duration-150">
+                                {{ __('Clear All Data') }}
+                            </button>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    @if($showClearDataConfirm)
+    <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" wire:click="$set('showClearDataConfirm', false)"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                            <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                        </div>
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Clear ERP Data</h3>
+                            <div class="mt-2">
+                                <p class="text-sm text-gray-500">Are you absolutely sure you want to clear all data? This will permanently delete all operational records. This action cannot be undone.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="button" wire:click="clearData" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        Yes, wipe everything
+                    </button>
+                    <button type="button" wire:click="$set('showClearDataConfirm', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+</div>
