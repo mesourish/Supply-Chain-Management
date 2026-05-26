@@ -1,49 +1,250 @@
 # SCM ERP (Supply Chain Management System)
 
-A robust, full-featured Supply Chain Management (SCM) ERP built with **Laravel 11**, **Livewire Volt**, **Alpine.js**, and **Tailwind CSS**. This software provides an end-to-end operational backbone for businesses, seamlessly connecting Procurement, Inventory, Sales, Logistics, and Financial management.
+A robust, enterprise-grade Supply Chain Management (SCM) ERP built with **Laravel 11**, **Livewire Volt**, **Alpine.js**, and **Tailwind CSS**. This software provides an end-to-end operational backbone for B2B enterprises, seamlessly connecting Customer Relationship Management (CRM), Sales Quotations, Project Milestones, Procurement (RFQs), multi-zone Warehouse Bins, Fleet Logistics, and Financial General Ledgers.
 
 ---
 
-## 🌟 Key Features
+## 🎨 SCM Ecosystem Visualizer
+
+This system operates as a unified, data-driven supply chain where customer demand directly triggers physical inventory movements, supplier acquisitions, and financial logs. The diagram below illustrates how all entities interact chronologically across modules.
+
+```mermaid
+graph TD
+    %% Define Styles
+    classDef crm fill:#e0f2fe,stroke:#0284c7,stroke-width:2px;
+    classDef procurement fill:#fef3c7,stroke:#d97706,stroke-width:2px;
+    classDef inventory fill:#dcfce7,stroke:#16a34a,stroke-width:2px;
+    classDef sales fill:#fce7f3,stroke:#db2777,stroke-width:2px;
+    classDef finance fill:#fee2e2,stroke:#dc2626,stroke-width:2px;
+    classDef logistics fill:#f3e8ff,stroke:#7c3aed,stroke-width:2px;
+    classDef projects fill:#e0f7fa,stroke:#0097a7,stroke-width:2px;
+
+    subgraph CRMSec ["1. CRM & Demand Trigger"]
+        Lead[CrmLead]:::crm
+        Activity[CrmActivity]:::crm
+        Lead -->|Converts to| Cust[Customer]:::crm
+        Lead -->|Generates Draft| Quote[Quotation]:::sales
+        Lead -.->|Logs activity| Activity
+    end
+
+    subgraph SalesSec ["2. Commercial Sales (Outbound)"]
+        QuoteItem[QuotationItem]:::sales
+        Quote -->|Contains| QuoteItem
+        Quote -->|Approved & Converts to| SO[SalesOrder]:::sales
+        Quote -->|Approved & Auto-Spawns| Proj[Project]:::projects
+        SO -->|Linked to| Cust
+    end
+
+    subgraph ProjectSec ["3. Project & Material Planning"]
+        Milestone[ProjectMilestone]:::projects
+        MaterialReq[ProjectMaterialRequest]:::projects
+        Proj -->|Has Phases| Milestone
+        Milestone -->|Reserves Stocks| MaterialReq
+    end
+
+    subgraph ProcurementSec ["4. Procurement & Sourcing (Inbound)"]
+        Rfq[Rfq]:::procurement
+        PO[PurchaseOrder]:::procurement
+        POItem[PurchaseOrderItem]:::procurement
+        GRN[GoodsReceiptNote]:::procurement
+        PO -->|Contains| POItem
+        Rfq -->|Collect Bids & Wins| PO
+    end
+
+    subgraph InventorySec ["5. Inventory & WMS (Warehouse Bins)"]
+        WH[Warehouse]:::inventory
+        Bin[WarehouseBin]:::inventory
+        Stock[BinProductStock]:::inventory
+        Tx[InventoryTransaction]:::inventory
+        WH -->|Contains| Bin
+        Bin -->|Stores Quantity| Stock
+        Tx -->|Logs Stock Move| Bin
+        GRN -->|Injects Stock| Bin
+        MaterialReq -->|Allocates Bins| Bin
+    end
+
+    subgraph LogisticsSec ["6. Fleet & Logistics Delivery"]
+        Shipment[Shipment]:::logistics
+        Driver[Driver]:::logistics
+        Vehicle[Vehicle]:::logistics
+        Shipment -->|Assigned Driver| Driver
+        Shipment -->|Assigned Asset| Vehicle
+        SO -->|Fulfill & Ship| Shipment
+    end
+
+    subgraph FinanceSec ["7. Accounting & General Ledger"]
+        AP[AccountPayable]:::finance
+        AR[AccountReceivable]:::finance
+        PayLog[PaymentLog]:::finance
+        Expense[Expense]:::finance
+        GRN -->|Generates Bill| AP
+        SO -->|Generates Invoice| AR
+        AP -->|Records Payment| PayLog
+        AR -->|Records Payment| PayLog
+        PayLog -->|Compiles| Cert[Payment Certificate]:::finance
+    end
+
+    %% Key Inter-Module Links
+    Stock -->|Below Reorder Level| Rfq
+    MaterialReq -->|Deducted from general availability| Stock
+```
+
+---
+
+## 🔄 Core Workflows & Detailed Data Flows
+
+### 1. Lead-to-Project & Order Conversion Flow
+This workflow demonstrates how customer interest captured in the CRM transitions seamlessly into signed contracts, auto-generating a standard B2B Sales Order alongside an execution Project Portfolio with designated warehouse stock reservations.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Staff as Sales / Operations Team
+    actor Customer as B2B Client
+    participant CRM as CRM Pipeline (leads.blade.php)
+    participant Sales as Sales Quotations (quotations.blade.php)
+    participant WMS as Inventory & Bins (WMS)
+    participant Proj as Project Board (projects/show.blade.php)
+
+    CRM->>CRM: Log & Track Opportunity (CrmLead)
+    CRM->>Staff: Hot Lead transitions to 'Proposal' status
+    Staff->>CRM: Trigger 'Convert Lead to Customer'
+    CRM->>Sales: Create Customer Record & Spawn Draft Quotation
+    Staff->>Sales: Configure Itemized Estimates, Margin Check & Taxes
+    Sales->>Customer: Present Final Quotation for Review
+    Customer->>Staff: Quote Accepted & Signed off
+    Staff->>Sales: Mark Quotation as 'Approved'
+    rect rgba(0, 150, 160, 0.1)
+        Note over Sales, Proj: Automatic Multi-Entity Engine
+        Sales->>Sales: Auto-Generate Inbound B2B Sales Order (SalesOrder)
+        Sales->>Proj: Auto-Create Execution Project Portfolio (Project)
+        Sales->>Proj: Initialize standard Project Milestones (ProjectMilestone)
+    end
+    Proj->>WMS: Check available warehouse stock (BinProductStock)
+    Proj->>WMS: Log Bin-Level Material Allocation (ProjectMaterialRequest)
+    Note over WMS, Proj: Reserves stock specifically for this project, locking it out of regular Sales Orders!
+```
+
+* **CRM Lead Kanban Component:** [leads.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/crm/leads.blade.php) - Manages leads, records client communications, and handles one-click conversions.
+* **Customer Profile Console:** [show.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/customers/show.blade.php) - Displays full order history, Outstanding Accounts Receivables (AR) management, and compiled payment certificates.
+* **Quotation Management Workspace:** [quotations.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/sales/quotations.blade.php) - Itemized quote calculator that automatically converts won estimates into active projects and orders.
+* **Project Dashboard:** [show.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/projects/show.blade.php) - Tracks progress, milestones, and isolates specific materials in warehouse bins using Project Material Requests to prevent standard sales allocation.
+
+---
+
+### 2. Procure-to-Pay Flow (Inbound Stock Lifecycle)
+This workflow handles critical inbound sourcing: tracking inventory depletion, dispatching multi-vendor RFQs, recording and evaluating bids, issuing formal POs, generating GRNs upon cargo arrival, and logging corresponding Accounts Payable bills.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Procurement Manager
+    actor Vendor as External Supplier
+    participant WMS as Warehouse (WMS)
+    participant Proc as RFQ & Sourcing (rfqs.blade.php)
+    participant PO as Purchase Order (POs)
+    participant GRN as Goods Receipt (GRN)
+    participant Fin as Accounts Payable (AP)
+
+    WMS->>WMS: Daily Stock Audit: BinProductStock < ReorderPoint
+    WMS->>Proc: Raise Automatic Reorder Procurement Alert
+    Admin->>Proc: Initiate RFQ for multiple Suppliers
+    Proc->>Vendor: Dispatch RFQs electronically
+    Vendor->>Proc: Log Supplier Bids (with bids pricing & delivery windows)
+    Admin->>Proc: Review & Final Approve the Winning Bid
+    Proc->>PO: Convert Winner Bid to Purchase Order (Draft -> Approved)
+    PO->>Vendor: Send Approved PO PDF
+    Vendor->>WMS: Deliver physical goods to Loading Dock
+    WMS->>GRN: Log incoming delivery, inspect quantities & quality
+    GRN->>WMS: Inbound Warehouse Bin Injections & Transaction Logs (FIFO)
+    GRN->>Fin: Create Bill (AccountPayable)
+    Admin->>Fin: Process Payment (Split or Full) & Upload Receipt File
+    Fin->>Fin: Update Vendor balance ledger & general ledger
+```
+
+* **Supplier RFQ Compiler:** [rfqs.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/procurement/rfqs.blade.php) - Requests bids, logs vendor quotes, and translates approved proposals into standard Purchase Orders.
+* **Warehouse Stock Models:** [WarehouseBin.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/app/Models/WarehouseBin.php) & [BinProductStock.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/app/Models/BinProductStock.php) - Tracks real-time quantities across multi-dimensional warehouse coordinate systems.
+
+---
+
+### 3. Order-to-Cash Flow (Outbound Fulfillment & Certificates)
+This outbound path covers customer order receipt, inventory matching, Wave Picking in the WMS, driver delivery routing, invoicing, split payment collection, and secure corporate Payment Certificate generation.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cust as B2B Customer
+    actor Admin as Warehouse/Logistics Staff
+    participant SO as Sales Order (SO)
+    participant WMS as Inventory & Bins (WMS)
+    participant Log as Fleet/Logistics (Shipment)
+    participant Fin as Accounts Receivable (AR)
+
+    Cust->>SO: Place B2B Sales Order or Approve Quote
+    SO->>WMS: Lock & Reserve stock at individual Warehouse Bins
+    WMS->>Admin: Generate Wave Pick List (optimized path picker)
+    Admin->>WMS: Scan QR Codes, Pick & Pack from Bin coordinates
+    WMS->>WMS: Record Stock Deductions & Inventory Transaction logs
+    WMS->>Log: Initialize Delivery Manifest & Logistics Shipment
+    Log->>Log: Assign Driver & Vehicle to optimal shipment routes
+    Log->>Cust: Transit status update -> Package Delivered
+    Log->>Fin: Trigger invoice billing (Invoice & AccountReceivable)
+    Cust->>Fin: Pay balance (Splits supported) & upload proof of payment
+    Fin->>Fin: Reconcile payments & adjust Customer AR Ledger balances
+    Fin->>Cust: Generate Secure Payment Certificate PDF matching selected data
+```
+
+* **Receivables Editor & Payments Logs:** [show.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/customers/show.blade.php#L150) - Located inside the Customer Profile view. Allows administrators to modify outstanding receivables and record incoming payments directly.
+* **Payment Certificate Generator:** [show.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/customers/show.blade.php#L220) - Allows compiling selected customer payments into a printable/exportable corporate PDF document to verify client transactions.
+
+---
+
+## 🌟 Key Features Summary
 
 ### 📦 Procurement & Suppliers
 - **Supplier Directory:** Comprehensive management of vendor details and performance metrics.
+- **Request for Quotation (RFQ):** Dispatch items to multiple suppliers and record vendor pricing side-by-side.
 - **Purchase Orders (POs):** Generate, approve, and track POs.
-- **Goods Receipt Notes (GRN):** Log incoming deliveries against POs. Supports partial receipts.
+- **Goods Receipt Notes (GRN):** Log incoming deliveries against POs with partial receipt support.
 
-### 🏭 Inventory & Warehouse Management
+### 🏭 Inventory & Warehouse Management (WMS)
 - **Multi-Warehouse & Rack Tracking:** Define warehouses, zones, racks, rows, and individual bins.
 - **Stock Tracking:** Real-time inventory logs with `source` and `destination` bin traceability.
 - **Stock Take & Adjustments:** Perform routine inventory audits and manual discrepancy adjustments.
 
 ### 💼 Sales & CRM
-- **Customer Directory:** Track clients and their order histories.
-- **Sales Orders (SOs):** Create and track outbound sales.
-- **Order Fulfillment:** Pick, pack, and ship items directly from assigned inventory bins.
+- **CRM Kanban Board:** Beautiful lead capture columns ("New", "Contacted", "Proposal", "Negotiation", "Won", "Lost") to track opportunities.
+- **Lead Auto-Conversion:** Instantly convert won leads into Customer Profiles and draft Quotations.
+- **Quotation Engine:** Dynamic tax, discount, and landed cost estimations.
+- **Sales Orders (SOs):** Pick, pack, and ship items directly from assigned inventory bins.
 - **Returns (RMA):** Process and log customer returns directly into inventory.
 
+### 🏗️ Project Management
+- **Milestone Sourcing:** Connect project schedules directly to supply chain procurement.
+- **Dedicated Material Allocations:** Reserve specific warehouse bin inventory to projects so it cannot be sold to general sales orders.
+
 ### 🚚 Fleet & Logistics
-- **Driver & Vehicle Management:** Log active vehicles and driver details.
+- **Driver & Vehicle Management:** Log active vehicles, drivers, and asset schedules.
 - **Shipment Tracking:** Assign drivers to specific fulfillment orders and track delivery statuses.
 
 ### 💳 Finance & Accounting
-- **Accounts Payable (AP):** Track balances owed to suppliers. Supports multiple/split payments and receipt attachments.
-- **Accounts Receivable (AR):** Track balances owed by customers. Supports split payments and proof-of-payment attachments.
-- **Purchase Expenses:** Track operational expenses (e.g., shipping, customs) optionally linked to POs.
+- **Accounts Payable (AP):** Track supplier bills, split payments, and upload receipts.
+- **Accounts Receivable (AR):** Manage customer invoices, split payments, and record transactions.
+- **Payment Certificate Compiler:** Generates custom-itemized corporate receipts for selected payments in PDF format.
 
 ---
 
 ## 🚀 Installation Guide
 
 ### Option 1: Docker (Laravel Sail) - *Recommended*
-If you have Docker Desktop installed, you can spin up the entire application (PHP, MySQL, Redis) without installing anything else on your local machine.
+If you have Docker Desktop installed, you can spin up the entire application without local environment configuration:
 
 1. **Clone the Repository**
    ```bash
    git clone https://github.com/YOUR_USERNAME/scm-erp.git
    cd scm-erp
    ```
-2. **Install Composer Dependencies** (Using a small Docker container)
+2. **Install Composer Dependencies** (Using a temporary Docker container)
    ```bash
    docker run --rm \
        -u "$(id -u):$(id -g)" \
@@ -84,48 +285,34 @@ If you have Docker Desktop installed, you can spin up the entire application (PH
    cp .env.example .env
    php artisan key:generate
    ```
-   *Update your `.env` file with your database credentials.*
+   *Update your `.env` file with your local database credentials.*
 
 4. **Database Migration & Seeding**
    ```bash
    php artisan migrate --seed
    ```
-   *This will run all migrations and populate the system with essential roles, permissions, and demo data.*
+   *This migrates the schema and seeds all admin permissions, module roles, and standard sample datasets.*
 
 5. **Start the Application**
    ```bash
    php artisan serve
    ```
-   Visit `http://localhost:8000` to log in. (Default credentials are provided by the seeder).
-
----
-
-## 📖 User Guide
-
-- **Dashboard:** The central hub for key metrics. You must have the `view dashboard` permission to access this.
-- **Settings:** An admin-only area where you can dynamically adjust system preferences (Currency symbols, company details).
-- **Workflows:** 
-  - *Inbound:* Create a Purchase Order -> Approve it -> Log a GRN when items arrive to inject them into inventory.
-  - *Outbound:* Create a Sales Order -> Fulfill it (picking items from stock) -> Dispatch via Logistics.
+   Visit `http://localhost:8000` to log in.
 
 ---
 
 ## 🤝 Contributing
 
-We welcome community contributions to make this ERP even better! 
-
-### Branch Protection (Important!)
-To maintain code integrity, the `main` branch is strictly **protected**. 
-**You cannot push code directly to `main`.**
+To maintain code integrity, the `main` branch is strictly **protected**. **You cannot push code directly to `main`.**
 
 ### Contribution Workflow:
 1. **Fork** the repository.
-2. **Create a branch** for your feature or bug fix: `git checkout -b feature/my-new-feature`
+2. **Create a branch** for your feature: `git checkout -b feature/my-new-feature`
 3. **Commit** your changes: `git commit -m "Add new feature"`
 4. **Push** to your fork: `git push origin feature/my-new-feature`
-5. **Open a Pull Request (PR)** against the `main` branch of this repository.
+5. **Open a Pull Request (PR)** against the `main` branch.
 
-*All PRs require review and approval before they can be merged.*
+*All PRs require automated test passes and code review approval before merging.*
 
 ---
 *Built with ❤️ using Laravel & Livewire.*

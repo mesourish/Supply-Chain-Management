@@ -46,15 +46,24 @@ class BrowserFlowTest extends TestCase
         $this->get('/warehouses')->assertStatus(200);
         $this->get('/inventory/log')->assertStatus(200);
 
-        // 6. Test Procurement
+        // 6. Test Procurement (with new RFQs page)
         $this->get('/suppliers')->assertStatus(200);
+        $this->get('/procurement/rfqs')->assertStatus(200);
         $this->get('/procurement/purchase-orders')->assertStatus(200);
+        $this->get('/procurement/grn')->assertStatus(200);
 
-        // 7. Test Sales
+        // 7. Test Sales (with new Quotations page)
         $this->get('/customers')->assertStatus(200);
+        $this->get('/sales/quotations')->assertStatus(200);
         $this->get('/sales/orders')->assertStatus(200);
 
-        // 8. Test Admin
+        // 8. Test CRM Leads (New)
+        $this->get('/crm/leads')->assertStatus(200);
+
+        // 9. Test Projects Module (New)
+        $this->get('/projects')->assertStatus(200);
+
+        // 10. Test Admin
         $this->get('/admin/roles')->assertStatus(200);
         $this->get('/admin/users')->assertStatus(200);
     }

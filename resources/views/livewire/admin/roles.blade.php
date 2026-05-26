@@ -25,7 +25,15 @@ new class extends Component {
         foreach($allPerms as $p) {
             $parts = explode(' ', $p->name);
             $module = count($parts) > 1 ? $parts[1] : $parts[0];
-            $grouped[ucfirst($module)][] = $p;
+            
+            // Format module name professionally
+            $formattedModule = str_replace('_', ' ', $module);
+            $formattedModule = ucwords($formattedModule);
+            if (strtolower($formattedModule) === 'rfqs') {
+                $formattedModule = 'RFQs';
+            }
+            
+            $grouped[$formattedModule][] = $p;
         }
         $this->permissions = $grouped;
     }
@@ -118,7 +126,7 @@ new class extends Component {
                             @foreach($perms as $permission)
                                 <label class="flex items-center space-x-2">
                                     <input type="checkbox" wire:model="selectedPermissions" value="{{ $permission->name }}" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
-                                    <span class="text-sm text-gray-700 capitalize">{{ str_replace($module, '', $permission->name) }}</span>
+                                    <span class="text-sm text-gray-700 capitalize">{{ explode(' ', $permission->name)[0] }}</span>
                                 </label>
                             @endforeach
                         </div>
