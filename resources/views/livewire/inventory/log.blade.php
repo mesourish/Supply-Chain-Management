@@ -2,80 +2,21 @@
 
 use App\Models\InventoryTransaction;
 use App\Models\Product;
-use App\Models\WarehouseBin;
 use Livewire\Volt\Component;
 use Livewire\WithPagination;
 
 new class extends Component {
     use WithPagination;
 
-    // Form fields for Manual Adjustment
-    public $product_id = '';
-    public $from_bin_id = null;
-    public $to_bin_id = null;
-    public $type = 'transfer';
-    public $quantity = 1;
-    public $notes = '';
-
-    public $products;
-    public $bins;
-
     // Filters
     public $filter_product_id = '';
     public $filter_type = '';
 
+    public $products;
+
     public function mount()
     {
-        $this->products = Product::all();
-        $this->bins = WarehouseBin::with('warehouse')->get();
-    }
-
-    public function rules()
-    {
-        return [
-            'product_id' => 'required|exists:products,id',
-            'from_bin_id' => 'nullable|exists:warehouse_bins,id',
-            'to_bin_id' => 'nullable|exists:warehouse_bins,id',
-            'type' => 'required|in:in,out,transfer,adjustment',
-            'quantity' => 'required|numeric|min:0.01',
-            'notes' => 'nullable|string',
-        ];
-    }
-
-    public function saveTransaction()
-    {
-        if (!auth()->user()->can('create inventory adjustments')) abort(403);
-        $this->validate();
-
-        // Basic validation depending on type
-        if ($this->type === 'transfer' && (!$this->from_bin_id || !$this->to_bin_id)) {
-            session()->flash('error', 'Both From and To Bins are required for transfers.');
-            return;
-        }
-
-        InventoryTransaction::create([
-            'product_id' => $this->product_id,
-            'from_bin_id' => $this->from_bin_id ?: null,
-            'to_bin_id' => $this->to_bin_id ?: null,
-            'type' => $this->type,
-            'quantity' => $this->quantity,
-            'reference_type' => 'Manual',
-            'notes' => $this->notes,
-            'user_id' => auth()->id(),
-        ]);
-
-        $this->resetInputFields();
-        session()->flash('message', 'Inventory transaction recorded successfully.');
-    }
-
-    public function resetInputFields()
-    {
-        $this->product_id = '';
-        $this->from_bin_id = null;
-        $this->to_bin_id = null;
-        $this->type = 'transfer';
-        $this->quantity = 1;
-        $this->notes = '';
+        $this->products = Product::orderBy('name')->get();
     }
 
     public function with()
@@ -96,187 +37,165 @@ new class extends Component {
     }
 }; ?>
 
-<div class="max-w-7xl mx-auto sm:px-6 lg:px-8 py-8">
-    
-    @can('create inventory adjustments')
-    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
-        <div class="p-6 text-gray-900 border-b border-gray-200 bg-gray-50">
-            <h2 class="text-xl font-bold mb-4 text-indigo-700">Manual Inventory Adjustment / Transfer</h2>
+<div class="py-12 bg-gray-50 min-h-screen">
+    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+        
+        <!-- Header Section -->
+        <div class="mb-8 md:flex md:items-center md:justify-between">
+            <div class="flex-1 min-w-0">
+                <h2 class="text-3xl font-extrabold leading-7 text-gray-900 sm:text-4xl sm:truncate tracking-tight">
+                    Inventory Audit Ledger
+                </h2>
+                <p class="mt-2 text-sm text-gray-500">
+                    A read-only, chronological immutable ledger tracking all physical stock movements, sourcing operations, and shipments.
+                </p>
+            </div>
+            <div class="mt-4 flex md:mt-0 md:ml-4">
+                <a href="{{ route('inventory.adjustments') }}" class="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                    Go to Adjustments
+                </a>
+            </div>
+        </div>
 
-            @if (session()->has('message'))
-                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('message') }}</span>
-                </div>
-            @endif
-            @if (session()->has('error'))
-                <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('error') }}</span>
-                </div>
-            @endif
-
-            <form wire:submit="saveTransaction">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                        <x-input-label for="type" value="Transaction Type *" />
-                        <select wire:model.live="type" id="type" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 rounded-md shadow-sm" required>
-                            <option value="transfer">Transfer (Bin to Bin)</option>
-                            <option value="in">Adjustment In (+)</option>
-                            <option value="out">Adjustment Out (-)</option>
-                            <option value="adjustment">Stock Count Correction</option>
-                        </select>
-                        <x-input-error :messages="$errors->get('type')" class="mt-2" />
-                    </div>
-                    <div>
-                        <x-input-label for="product_id" value="Product *" />
-                        <select wire:model="product_id" id="product_id" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 rounded-md shadow-sm" required>
-                            <option value="">Select Product...</option>
+        <!-- Filters Box -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">Filter Audit Records</h3>
+                
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="w-full sm:w-64">
+                        <select wire:model.live="filter_product_id" class="block w-full border-gray-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-lg text-sm transition-colors py-2 pl-3 pr-10">
+                            <option value="">All Products</option>
                             @foreach($products as $p)
                                 <option value="{{ $p->id }}">{{ $p->sku }} - {{ $p->name }}</option>
                             @endforeach
                         </select>
-                        <x-input-error :messages="$errors->get('product_id')" class="mt-2" />
                     </div>
-                    <div>
-                        <x-input-label for="quantity" value="Quantity *" />
-                        <x-text-input wire:model="quantity" id="quantity" type="number" step="0.01" min="0.01" class="mt-1 block w-full" required />
-                        <x-input-error :messages="$errors->get('quantity')" class="mt-2" />
-                    </div>
-
-                    @if($type === 'transfer' || $type === 'out' || $type === 'adjustment')
-                    <div>
-                        <x-input-label for="from_bin_id" value="From Bin" />
-                        <select wire:model="from_bin_id" id="from_bin_id" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 rounded-md shadow-sm">
-                            <option value="">Select Source Bin...</option>
-                            @foreach($bins as $bin)
-                                <option value="{{ $bin->id }}">{{ $bin->warehouse->name }} -> {{ $bin->full_label }}</option>
-                            @endforeach
+                    <div class="w-full sm:w-48">
+                        <select wire:model.live="filter_type" class="block w-full border-gray-200 focus:border-indigo-500 focus:ring-indigo-500 rounded-lg text-sm transition-colors py-2 pl-3 pr-10">
+                            <option value="">All Movement Types</option>
+                            <option value="adjustment_in">Adjustment In (+)</option>
+                            <option value="adjustment_out">Adjustment Out (-)</option>
+                            <option value="transfer">Bin Transfer</option>
+                            <option value="purchase_order">PO Received</option>
+                            <option value="sales_order">SO Shipped</option>
+                            <option value="rma_return">RMA Return</option>
+                            <option value="project_allocation">Project Reserved</option>
                         </select>
-                        <x-input-error :messages="$errors->get('from_bin_id')" class="mt-2" />
                     </div>
-                    @endif
-
-                    @if($type === 'transfer' || $type === 'in' || $type === 'adjustment')
-                    <div>
-                        <x-input-label for="to_bin_id" value="To Bin" />
-                        <select wire:model="to_bin_id" id="to_bin_id" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 rounded-md shadow-sm">
-                            <option value="">Select Destination Bin...</option>
-                            @foreach($bins as $bin)
-                                <option value="{{ $bin->id }}">{{ $bin->warehouse->name }} -> {{ $bin->full_label }}</option>
-                            @endforeach
-                        </select>
-                        <x-input-error :messages="$errors->get('to_bin_id')" class="mt-2" />
-                    </div>
-                    @endif
-
-                    <div class="md:col-span-full">
-                        <x-input-label for="notes" value="Notes / Reason" />
-                        <x-text-input wire:model="notes" id="notes" type="text" class="mt-1 block w-full" placeholder="e.g. Damage write-off, initial stock, bin relocation..." />
-                        <x-input-error :messages="$errors->get('notes')" class="mt-2" />
-                    </div>
-                </div>
-
-                <div class="flex items-center gap-4">
-                    <x-primary-button>Record Transaction</x-primary-button>
-                </div>
-            </form>
-        </div>
-    </div>
-    @endcan
-
-    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-        <div class="p-6 text-gray-900">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold text-gray-800">Inventory Movement Log</h2>
-                
-                <div class="flex space-x-2">
-                    <select wire:model.live="filter_product_id" class="border-gray-300 focus:border-indigo-500 rounded-md shadow-sm text-sm">
-                        <option value="">All Products</option>
-                        @foreach($products as $p)
-                            <option value="{{ $p->id }}">{{ $p->sku }}</option>
-                        @endforeach
-                    </select>
-                    <select wire:model.live="filter_type" class="border-gray-300 focus:border-indigo-500 rounded-md shadow-sm text-sm">
-                        <option value="">All Types</option>
-                        <option value="in">In</option>
-                        <option value="out">Out</option>
-                        <option value="transfer">Transfer</option>
-                        <option value="adjustment">Adjustment</option>
-                    </select>
                 </div>
             </div>
+        </div>
 
+        <!-- Ledger Table Card -->
+        <div class="bg-white shadow-sm border border-gray-100 rounded-xl overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                    <thead class="bg-gray-50/75">
                         <tr>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">From Bin</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">To Bin</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference & Notes</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Timestamp / Operator</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Quantity</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Source Bin</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Destination Bin</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Reference & Reason</th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
+                    <tbody class="bg-white divide-y divide-gray-100">
                         @forelse($transactions as $txn)
-                            <tr>
-                                <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ $txn->created_at->format('Y-m-d H:i') }}<br>
-                                    <span class="text-xs text-gray-400">{{ $txn->user->name ?? 'System' }}</span>
+                            <tr class="hover:bg-gray-50/50 transition-colors">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    <div class="font-medium text-gray-900">{{ $txn->created_at->format('Y-m-d H:i') }}</div>
+                                    <div class="text-xs text-gray-400 font-mono">{{ $txn->user->name ?? 'System Process' }}</div>
                                 </td>
-                                <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    {{ $txn->product?->sku ?? 'N/A' }}<br>
-                                    <span class="text-xs text-gray-500">{{ $txn->product?->name ?? 'Deleted Product' }}</span>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <div class="font-semibold text-gray-900">{{ $txn->product?->sku ?? 'N/A' }}</div>
+                                    <div class="text-xs text-gray-500 truncate max-w-xs">{{ $txn->product?->name ?? 'Deleted Product' }}</div>
                                 </td>
-                                <td class="px-4 py-4 whitespace-nowrap">
+                                <td class="px-6 py-4 whitespace-nowrap">
                                     @php
-                                        $color = match($txn->type) {
-                                            'in' => 'bg-green-100 text-green-800',
-                                            'out' => 'bg-red-100 text-red-800',
-                                            'transfer' => 'bg-blue-100 text-blue-800',
-                                            default => 'bg-gray-100 text-gray-800'
+                                        $badgeClass = match($txn->type) {
+                                            'adjustment_in', 'in' => 'bg-green-50 text-green-700 border-green-100',
+                                            'adjustment_out', 'out' => 'bg-rose-50 text-rose-700 border-rose-100',
+                                            'transfer' => 'bg-indigo-50 text-indigo-700 border-indigo-100',
+                                            'purchase_order' => 'bg-amber-50 text-amber-700 border-amber-100',
+                                            'sales_order' => 'bg-teal-50 text-teal-700 border-teal-100',
+                                            'rma_return' => 'bg-purple-50 text-purple-700 border-purple-100',
+                                            default => 'bg-gray-50 text-gray-600 border-gray-100'
+                                        };
+                                        $label = match($txn->type) {
+                                            'adjustment_in', 'in' => 'ADJUST IN',
+                                            'adjustment_out', 'out' => 'ADJUST OUT',
+                                            'transfer' => 'TRANSFER',
+                                            'purchase_order' => 'PO INBOUND',
+                                            'sales_order' => 'SO FULFILL',
+                                            'rma_return' => 'RMA RETURN',
+                                            default => strtoupper($txn->type)
                                         };
                                     @endphp
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $color }}">
-                                        {{ strtoupper($txn->type) }}
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border {{ $badgeClass }}">
+                                        {{ $label }}
                                     </span>
                                 </td>
-                                <td class="px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                                    {{ $txn->type === 'out' ? '-' : ($txn->type === 'in' ? '+' : '') }}{{ $txn->quantity }}
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    @php
+                                        $isNegative = in_array($txn->type, ['adjustment_out', 'out', 'sales_order']);
+                                        $colorClass = $isNegative ? 'text-rose-600' : ($txn->type === 'transfer' ? 'text-indigo-600' : 'text-green-600');
+                                        $prefix = $isNegative ? '-' : ($txn->type === 'transfer' ? '⇅' : '+');
+                                    @endphp
+                                    <span class="font-bold {{ $colorClass }}">
+                                        {{ $prefix }} {{ $txn->quantity }}
+                                    </span>
                                 </td>
-                                <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     @if($txn->fromBin)
-                                        {{ $txn->fromBin->warehouse->name }} > {{ $txn->fromBin->full_label }}
+                                        <div class="font-medium text-gray-700">{{ $txn->fromBin->warehouse->name }}</div>
+                                        <div class="text-xs text-gray-400 font-mono">{{ $txn->fromBin->full_label }}</div>
                                     @else
-                                        -
+                                        <span class="text-gray-300 font-mono">-</span>
                                     @endif
                                 </td>
-                                <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     @if($txn->toBin)
-                                        {{ $txn->toBin->warehouse->name }} > {{ $txn->toBin->full_label }}
+                                        <div class="font-medium text-gray-700">{{ $txn->toBin->warehouse->name }}</div>
+                                        <div class="text-xs text-gray-400 font-mono">{{ $txn->toBin->full_label }}</div>
                                     @else
-                                        -
+                                        <span class="text-gray-300 font-mono">-</span>
                                     @endif
                                 </td>
-                                <td class="px-4 py-4 text-sm text-gray-500 max-w-xs truncate" title="{{ $txn->notes }}">
+                                <td class="px-6 py-4 text-sm text-gray-500 max-w-xs">
                                     @if($txn->reference_type)
-                                        <span class="font-semibold text-indigo-600">{{ $txn->reference_type }} #{{ $txn->reference_id }}</span><br>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 mb-1">
+                                            {{ $txn->reference_type }} #{{ $txn->reference_id }}
+                                        </span><br>
                                     @endif
-                                    {{ $txn->notes }}
+                                    <div class="text-xs italic text-gray-600 truncate" title="{{ $txn->notes }}">
+                                        {{ $txn->notes ?: 'No description recorded.' }}
+                                    </div>
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-4 py-8 text-center text-gray-500">No inventory transactions found.</td>
+                                <td colspan="7" class="px-6 py-12 text-center">
+                                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                    </svg>
+                                    <h3 class="mt-2 text-sm font-medium text-gray-900 font-semibold">No Audit Records Found</h3>
+                                    <p class="mt-1 text-sm text-gray-500">No transactions recorded for the selected filter criteria.</p>
+                                </td>
                             </tr>
                         @endforelse
                     </tbody>
                 </table>
             </div>
-            <div class="mt-4">
-                {{ $transactions->links() }}
-            </div>
+            
+            @if($transactions->hasPages())
+                <div class="px-6 py-4 bg-gray-50 border-t border-gray-100">
+                    {{ $transactions->links() }}
+                </div>
+            @endif
         </div>
+
     </div>
 </div>
