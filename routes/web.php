@@ -26,8 +26,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('inventory/adjustments', 'inventory.adjustments')->name('inventory.adjustments');
 
 
+    // CRM Module
+    Volt::route('crm/leads', 'crm.leads')->name('crm.leads');
+
     // Procurement Module
     Volt::route('suppliers', 'suppliers.index')->name('suppliers.index');
+    Volt::route('procurement/rfqs', 'procurement.rfqs')->name('procurement.rfqs');
     Volt::route('procurement/purchase-orders', 'procurement.purchase-orders.index')
         ->name('purchase-orders.index');
     Volt::route('procurement/grn', 'procurement.grn.index')
@@ -39,9 +43,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('customers/{customer}', 'customers.show')->name('customers.show');
     Volt::route('sales/orders', 'sales.orders.index')->name('sales-orders.index');
     Volt::route('sales/orders/{order}', 'sales.orders.show')->name('sales-orders.show');
+    Volt::route('sales/quotations', 'sales.quotations')->name('sales.quotations');
     Volt::route('sales/fulfillment', 'sales.fulfillment.index')->name('fulfillment.index');
     Volt::route('sales/returns', 'sales.returns.index')->name('returns.index');
     Volt::route('sales/returns/{id}', 'sales.returns.show')->name('returns.show');
+
+    // Projects Module
+    Volt::route('projects', 'projects.index')->name('projects.index');
+    Volt::route('projects/{project}', 'projects.show')->name('projects.show');
     // Logistics
     Volt::route('logistics/dispatch', 'logistics.dispatch')
         ->name('dispatch.index');
@@ -65,6 +74,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('finance/expenses', 'finance.expenses')
         ->name('finance.expenses')
         ->middleware('can:view expenses');
+    Volt::route('finance/payment-certificates', 'finance.payment-certificates')
+        ->name('finance.certificates')
+        ->middleware('can:view receivables');
 
     // Admin / Settings Module
     Volt::route('admin/settings', 'admin.settings.index')

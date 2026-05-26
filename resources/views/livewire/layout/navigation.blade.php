@@ -32,14 +32,20 @@ new class extends Component
                     <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('crm.leads')" :active="request()->routeIs('crm.*')" wire:navigate>
+                        {{ __('CRM') }}
+                    </x-nav-link>
                     <x-nav-link :href="route('products.index')" :active="request()->routeIs('products.*')" wire:navigate>
                         {{ __('Products') }}
                     </x-nav-link>
                     <x-nav-link :href="route('warehouses.index')" :active="request()->routeIs('warehouses.*')" wire:navigate>
                         {{ __('Warehouses') }}
                     </x-nav-link>
-                    <x-nav-link :href="route('suppliers.index')" :active="request()->routeIs('suppliers.*')" wire:navigate>
+                    <x-nav-link :href="route('suppliers.index')" :active="request()->routeIs('suppliers.*') && !request()->routeIs('procurement.rfqs')" wire:navigate>
                         {{ __('Suppliers') }}
+                    </x-nav-link>
+                    <x-nav-link :href="route('procurement.rfqs')" :active="request()->routeIs('procurement.rfqs')" wire:navigate>
+                        {{ __('RFQs') }}
                     </x-nav-link>
                     <x-nav-link :href="route('purchase-orders.index')" :active="request()->routeIs('purchase-orders.*')" wire:navigate>
                         {{ __('Purchase Orders') }}
@@ -47,8 +53,14 @@ new class extends Component
                     <x-nav-link :href="route('customers.index')" :active="request()->routeIs('customers.*')" wire:navigate>
                         {{ __('Customers') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('sales.quotations')" :active="request()->routeIs('sales.quotations')" wire:navigate>
+                        {{ __('Quotations') }}
+                    </x-nav-link>
                     <x-nav-link :href="route('sales-orders.index')" :active="request()->routeIs('sales-orders.*')" wire:navigate>
                         {{ __('Sales Orders') }}
+                    </x-nav-link>
+                    <x-nav-link :href="route('projects.index')" :active="request()->routeIs('projects.*')" wire:navigate>
+                        {{ __('Projects') }}
                     </x-nav-link>
                     <!-- Finance Dropdown -->
                     @canany(['view payables', 'view receivables'])
@@ -133,14 +145,20 @@ new class extends Component
             <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
                 {{ __('Dashboard') }}
             </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('crm.leads')" :active="request()->routeIs('crm.*')" wire:navigate>
+                {{ __('CRM') }}
+            </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('products.index')" :active="request()->routeIs('products.*')" wire:navigate>
                 {{ __('Products') }}
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('warehouses.index')" :active="request()->routeIs('warehouses.*')" wire:navigate>
                 {{ __('Warehouses') }}
             </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('suppliers.index')" :active="request()->routeIs('suppliers.*')" wire:navigate>
+            <x-responsive-nav-link :href="route('suppliers.index')" :active="request()->routeIs('suppliers.*') && !request()->routeIs('procurement.rfqs')" wire:navigate>
                 {{ __('Suppliers') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('procurement.rfqs')" :active="request()->routeIs('procurement.rfqs')" wire:navigate>
+                {{ __('RFQs') }}
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('purchase-orders.index')" :active="request()->routeIs('purchase-orders.*')" wire:navigate>
                 {{ __('Purchase Orders') }}
@@ -148,8 +166,14 @@ new class extends Component
             <x-responsive-nav-link :href="route('customers.index')" :active="request()->routeIs('customers.*')" wire:navigate>
                 {{ __('Customers') }}
             </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('sales.quotations')" :active="request()->routeIs('sales.quotations')" wire:navigate>
+                {{ __('Quotations') }}
+            </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('sales-orders.index')" :active="request()->routeIs('sales-orders.*')" wire:navigate>
                 {{ __('Sales Orders') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('projects.index')" :active="request()->routeIs('projects.*')" wire:navigate>
+                {{ __('Projects') }}
             </x-responsive-nav-link>
         </div>
 

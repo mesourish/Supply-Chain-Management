@@ -35,6 +35,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'view receivables', 'create receivables', 'edit receivables',
             'view returns', 'create returns', 'edit returns',
             'view expenses', 'create expenses', 'edit expenses', 'delete expenses',
+            'view crm_leads', 'create crm_leads', 'edit crm_leads', 'delete crm_leads',
+            'view quotations', 'create quotations', 'edit quotations', 'delete quotations',
+            'view rfqs', 'create rfqs', 'edit rfqs', 'delete rfqs',
+            'view projects', 'create projects', 'edit projects', 'delete projects',
         ];
 
         foreach ($permissions as $permission) {

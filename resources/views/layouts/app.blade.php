@@ -64,6 +64,14 @@
                         <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">Dashboard</span>
                     </a>
 
+                    <!-- CRM MODULE -->
+                    <a href="{{ url('/crm/leads') }}" class="flex items-center px-4 py-2 text-sm font-medium rounded-md group {{ request()->is('crm*') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white' }}">
+                        <svg class="w-5 h-5 mr-3 {{ request()->is('crm*') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-indigo-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">CRM Leads</span>
+                    </a>
+
                     <!-- INVENTORY MODULE -->
                     @can('view products')
                     <div x-data="{ open: {{ request()->is('products*') || request()->is('warehouses*') || request()->is('inventory*') ? 'true' : 'false' }} }" class="space-y-1">
@@ -100,7 +108,8 @@
                             <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-4 h-4 transition-transform duration-200" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
                         </button>
                         <div x-show="open && sidebarOpen" x-collapse class="pl-12 pr-2 space-y-1">
-                            <a href="{{ url('/suppliers') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('suppliers*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Suppliers</a>
+                            <a href="{{ url('/suppliers') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('suppliers*') && !request()->is('procurement/rfqs*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Suppliers</a>
+                            <a href="{{ url('/procurement/rfqs') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('procurement/rfqs*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Supplier RFQs</a>
                             <a href="{{ url('/procurement/purchase-orders') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('procurement/purchase-orders*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Purchase Orders</a>
                             <a href="{{ url('/procurement/grn') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('procurement/grn*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Goods Receipt (GRN)</a>
                         </div>
@@ -119,6 +128,7 @@
                         </button>
                         <div x-show="open && sidebarOpen" x-collapse class="pl-12 pr-2 space-y-1">
                             <a href="{{ url('/customers') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('customers*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Customers</a>
+                            <a href="{{ url('/sales/quotations') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('sales/quotations*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Sales Quotations</a>
                             <a href="{{ url('/sales/orders') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('sales/orders*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Sales Orders</a>
                             @can('view fulfillment')
                             <a href="{{ url('/sales/fulfillment') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('sales/fulfillment*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Order Fulfillment</a>
@@ -157,6 +167,22 @@
                     </div>
                     @endcanany
 
+                    <!-- PROJECTS MODULE -->
+                    <div x-data="{ open: {{ request()->is('projects*') ? 'true' : 'false' }} }" class="space-y-1">
+                        <button @click="open = !open; if(!sidebarOpen) sidebarOpen = true;" class="flex items-center justify-between w-full px-4 py-2 text-sm font-medium rounded-md group {{ request()->is('projects*') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white' }}">
+                            <div class="flex items-center">
+                                <svg class="w-5 h-5 mr-3 {{ request()->is('projects*') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-indigo-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                </svg>
+                                <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">Projects</span>
+                            </div>
+                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-4 h-4 transition-transform duration-200" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                        </button>
+                        <div x-show="open && sidebarOpen" x-collapse class="pl-12 pr-2 space-y-1">
+                            <a href="{{ url('/projects') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->routeIs('projects.index', 'projects.show') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Project Directory</a>
+                        </div>
+                    </div>
+
                     <!-- FINANCE MODULE -->
                     <!-- Changed from the previous permission check to checking for any finance ability or making it visible -->
                     <div x-data="{ open: {{ request()->is('finance*') ? 'true' : 'false' }} }" class="space-y-1">
@@ -173,6 +199,7 @@
                             <a href="{{ url('/finance/payables') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('finance/payables*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Accounts Payable</a>
                             <a href="{{ url('/finance/receivables') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('finance/receivables*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Accounts Receivable</a>
                             <a href="{{ url('/finance/invoices') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('finance/invoices*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Invoices</a>
+                            <a href="{{ url('/finance/payment-certificates') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('finance/payment-certificates*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Payment Certificates</a>
                             <a href="{{ url('/finance/expenses') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('finance/expenses*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Purchase Expenses</a>
                         </div>
                     </div>
