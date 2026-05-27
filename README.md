@@ -91,6 +91,79 @@ graph TD
 
 ---
 
+## 📊 SCM Pipeline Data Flow Diagram (DFD)
+
+This Data Flow Diagram (DFD) maps the movement of data between external entities (users/clients), operational processes, database stores, and physical ledger records, showing how information flows from initial demand triggers through fulfillment and audit logs.
+
+```mermaid
+graph TD
+    %% Define Styles
+    classDef entity fill:#fff,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef process fill:#f9fafb,stroke:#4b5563,stroke-width:2px;
+    classDef datastore fill:#eef2ff,stroke:#6366f1,stroke-width:2px;
+
+    %% External Entities (Dotted Boxes)
+    Customer(("👤 B2B Customer")):::entity
+    Supplier(("🏢 Supplier Vendor")):::entity
+    Admin(("🧑‍💼 Warehouse Admin")):::entity
+    Auditor(("🧑‍💻 Finance Auditor")):::entity
+
+    %% Processes (Rounded Corners)
+    P1["P1: Lead Pipeline & Conversions"]:::process
+    P2["P2: Estimate Quotations & Sales Orders"]:::process
+    P3["P3: Project Material Allocations"]:::process
+    P4["P4: Outbound Order Fulfillment"]:::process
+    P5["P5: Multi-Supplier RFQ Bids & POs"]:::process
+    P6["P6: Inbound Goods Receipt Note"]:::process
+    P7["P7: Manual Stock Adjustments"]:::process
+    P8["P8: General Ledger Ledger & Receipts"]:::process
+
+    %% Data Stores (Double Bar / Open boxes)
+    D1[("D1: CRM Opportunities &lt;crm_leads&gt;")]:::datastore
+    D2[("D2: Warehouses & Bins Stocks &lt;bin_product_stocks&gt;")]:::datastore
+    D3[("D3: Projects & Material Reserves &lt;project_material_requests&gt;")]:::datastore
+    D4[("D4: Accounts Receivable Ledger &lt;account_receivables&gt;")]:::datastore
+    D5[("D5: Accounts Payable Ledger &lt;account_payables&gt;")]:::datastore
+    D6[("D6: Immutable Ledger Logs &lt;inventory_transactions&gt;")]:::datastore
+
+    %% Data Flows
+    Customer -->|Sales Inquiry| P1
+    P1 -->|Log Opportunity| D1
+    D1 -->|Won Lead| P2
+    P2 -->|Create Profile| Customer
+    Customer -->|Approve Quote| P2
+    P2 -->|Reserve Bin Stock| P3
+    P3 -->|Reserve Milestones| D3
+    P3 -->|Subtract Qty from General Stock| D2
+    D2 -->|Generate Pick List| P4
+    P4 -->|Scan Barcode / Ship Cargo| Customer
+    P4 -->|Permanent stock deduction| D2
+    P4 -->|Record Inbound Invoice| D4
+
+    %% Procurement side
+    D2 -->|Below reorder levels| P5
+    P5 -->|Dispatches RFQs| Supplier
+    Supplier -->|Submit Bid Price| P5
+    P5 -->|Raise PO| Supplier
+    Supplier -->|Deliver Freight| P6
+    P6 -->|GRN stock injection| D2
+    P6 -->|FIFO Inbound Transaction Log| D6
+    P6 -->|Record Bill| D5
+
+    %% Adjustments
+    Admin -->|Add / Remove / Transfer Stock| P7
+    P7 -->|Recalculate quantities| D2
+    P7 -->|Append manual log event| D6
+
+    %% Finance
+    Customer -->|Settle invoices / Pay balance| P8
+    P8 -->|Update client ledger| D4
+    P8 -->|Compile Cert matching selected payments| Customer
+    Auditor -->|Inspect ledger transparency| D6
+```
+
+---
+
 ## 🔄 Core Workflows & Detailed Data Flows
 
 ### 1. Lead-to-Project & Order Conversion Flow
@@ -196,6 +269,25 @@ sequenceDiagram
 
 * **Receivables Editor & Payments Logs:** [show.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/customers/show.blade.php#L150) - Located inside the Customer Profile view. Allows administrators to modify outstanding receivables and record incoming payments directly.
 * **Payment Certificate Generator:** [show.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/customers/show.blade.php#L220) - Allows compiling selected customer payments into a printable/exportable corporate PDF document to verify client transactions.
+
+---
+
+## ⚖️ Stock Adjustments vs. Inventory Ledger (SOX & Audit Compliance)
+
+In enterprise-level ERP architectures, a strict separation is maintained between operational calculations (physical inventory alterations) and historical reporting (the ledger trace):
+
+| Dimension | 🏭 Stock Adjustments Console | 📘 Inventory Audit Ledger |
+| :--- | :--- | :--- |
+| **Purpose** | **Operational Actions:** Administrative panel where staff physically logs additions, removals, or transfers. | **Compliance Logs:** An immutable historical transaction log mapping all SCM ledger adjustments chronologically. |
+| **Mutability** | **Active Calculations:** Recomputes actual quantities in the WMS (`bin_product_stocks`). | **Immutable:** Static, read-only transaction ledger entries that cannot be edited or manually added. |
+| **Origin Triggers** | Triggered manually by admins for inventory corrections or stock movement transfers. | Spawned automatically by system triggers (GRNs, Shipments, RMAs, or Manual Adjustments). |
+| **Capabilities** | Supports manual additions, manual removals, and complex **Bin-to-Bin stock transfers**. | Supports advanced filtering, searching, and product SKU tracking. |
+
+### ⇅ The Bin-to-Bin Stock Transfer Engine
+A custom, high-fidelity stock transfer module has been integrated into the **Manual Stock Adjustments** dashboard:
+* **Current Balances Verification:** When an operator transfers stock, the engine validates that the source bin has sufficient physical inventory.
+* **Double-Entry Balance Updates:** In a single, transaction-guaranteed block, the system automatically subtracts the selected quantity from the source bin coordinate and adds it to the target bin coordinate (creating a new stock index if the product was not previously present).
+* **Unified Audit Logging:** Appends a single comprehensive transaction trace to the **Inventory Audit Ledger** detailing both the `from_bin_id` and the `to_bin_id` alongside user timestamps, ensuring absolute transparency.
 
 ---
 

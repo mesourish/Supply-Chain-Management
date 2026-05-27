@@ -31,11 +31,105 @@ new class extends Component {
     public $activityType = 'call';
     public $activityDescription = '';
     public $activityDate = '';
+
+    // Lead Details Modal state
+    public $showDetailsModal = false;
+    public $isEditingDetails = false;
+    public $selectedLead = null;
+    
+    // Edit Lead Form Fields
+    public $editTitle = '';
+    public $editCompanyName = '';
+    public $editContactName = '';
+    public $editEmail = '';
+    public $editPhone = '';
+    public $editDealValue = 0;
+    public $editPipelineStage = 'new';
+    public $editDealProbability = 10;
+    public $editSource = '';
+    public $editNotes = '';
+    public $editAssignedUserId = '';
     
     public function mount()
     {
         if (!auth()->user()->can('view dashboard')) { abort(403); }
         $this->activityDate = date('Y-m-d');
+    }
+
+    public function viewLead($id)
+    {
+        $lead = CrmLead::with(['assignedUser', 'activities.user'])->findOrFail($id);
+        $this->selectedLeadId = $id;
+        $this->selectedLead = $lead;
+        
+        // Map edit fields
+        $this->editTitle = $lead->title;
+        $this->editCompanyName = $lead->company_name;
+        $this->editContactName = $lead->contact_name;
+        $this->editEmail = $lead->email;
+        $this->editPhone = $lead->phone;
+        $this->editDealValue = $lead->deal_value;
+        $this->editPipelineStage = $lead->pipeline_stage;
+        $this->editDealProbability = $lead->deal_probability;
+        $this->editSource = $lead->source;
+        $this->editNotes = $lead->notes;
+        $this->editAssignedUserId = $lead->assigned_user_id;
+
+        $this->isEditingDetails = false;
+        $this->showDetailsModal = true;
+    }
+
+    public function updateLeadDetails()
+    {
+        $this->validate([
+            'editTitle' => 'required|string|max:255',
+            'editContactName' => 'required|string|max:255',
+            'editEmail' => 'required|email|max:255',
+            'editDealValue' => 'required|numeric|min:0',
+            'editPipelineStage' => 'required|in:new,contacted,proposal,negotiation,won,lost',
+            'editDealProbability' => 'required|integer|min:0|max:100',
+        ]);
+
+        $lead = CrmLead::findOrFail($this->selectedLeadId);
+        
+        // Check if stage transitioned to Won, dynamically create customer first if not already done
+        if ($this->editPipelineStage === 'won' && !$lead->customer_id) {
+            $customer = Customer::create([
+                'name' => $this->editContactName,
+                'contact_person' => $this->editContactName,
+                'email' => $this->editEmail,
+                'phone' => $this->editPhone,
+                'company_name' => $this->editCompanyName,
+            ]);
+            $lead->customer_id = $customer->id;
+        }
+
+        $lead->update([
+            'title' => $this->editTitle,
+            'company_name' => $this->editCompanyName,
+            'contact_name' => $this->editContactName,
+            'email' => $this->editEmail,
+            'phone' => $this->editPhone,
+            'deal_value' => $this->editDealValue,
+            'pipeline_stage' => $this->editPipelineStage,
+            'deal_probability' => $this->editDealProbability,
+            'source' => $this->editSource,
+            'notes' => $this->editNotes,
+            'assigned_user_id' => $this->editAssignedUserId ?: null,
+            'customer_id' => $lead->customer_id,
+        ]);
+
+        $this->selectedLead = $lead->load(['assignedUser', 'activities.user']);
+        $this->isEditingDetails = false;
+        session()->flash('message', 'Lead details updated successfully.');
+    }
+
+    public function deleteLead($id)
+    {
+        $lead = CrmLead::findOrFail($id);
+        $lead->delete();
+        $this->showDetailsModal = false;
+        session()->flash('message', 'Lead deleted successfully.');
     }
 
     public function getLeadsList()
@@ -262,8 +356,8 @@ new class extends Component {
         </div>
     </div>
 
-    <!-- Kanban Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 items-start">
+    <!-- Kanban Responsive Horizontally Scrollable Board -->
+    <div class="flex overflow-x-auto gap-6 pb-6 select-none scrollbar-thin" style="scrollbar-width: thin; -webkit-overflow-scrolling: touch;">
         
         @foreach([
             'new' => ['name' => 'New Lead', 'bg' => 'bg-gray-100/50', 'border' => 'border-gray-200', 'text' => 'text-gray-600'],
@@ -279,7 +373,14 @@ new class extends Component {
                 $stageTotal = $stageLeads->sum('deal_value');
             @endphp
 
-            <div class="rounded-3xl p-4 {{ $stageVal['bg'] }} border {{ $stageVal['border'] }} space-y-4">
+            <div x-data="{ draggingOver: false }"
+                 x-on:dragenter.prevent="draggingOver = true"
+                 x-on:dragleave.prevent="draggingOver = false"
+                 x-on:dragover.prevent=""
+                 x-on:drop="draggingOver = false; const leadId = event.dataTransfer.getData('text/plain'); $wire.moveStage(leadId, '{{ $stageKey }}')"
+                 class="flex-shrink-0 w-[290px] lg:w-[310px] rounded-3xl p-4 transition-all duration-200 border space-y-4 {{ $stageVal['bg'] }} {{ $stageVal['border'] }}"
+                 :class="{ 'ring-2 ring-indigo-500 bg-indigo-50/15 border-indigo-200 shadow-md scale-[1.01]': draggingOver }"
+            >
                 <!-- Column Header -->
                 <div class="flex items-center justify-between border-b border-gray-100 pb-2">
                     <div>
@@ -292,7 +393,11 @@ new class extends Component {
                 <!-- Column Cards list -->
                 <div class="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                     @forelse($stageLeads as $lead)
-                        <div class="bg-white p-3 rounded-2xl border border-gray-150 shadow-sm relative group hover:shadow-md transition-shadow">
+                        <div draggable="true"
+                             x-on:dragstart="event.dataTransfer.setData('text/plain', {{ $lead->id }})"
+                             wire:click="viewLead({{ $lead->id }})"
+                             class="bg-white p-4 rounded-2xl border border-gray-150 shadow-sm relative group hover:shadow-md hover:border-indigo-400 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+                        >
                             
                             <!-- Probability Indicator dot -->
                             <div class="absolute top-3 right-3 flex items-center gap-1">
@@ -315,23 +420,24 @@ new class extends Component {
                             <!-- Actions Row -->
                             <div class="border-t border-gray-50 pt-2.5 mt-2.5 flex items-center justify-between gap-1 text-[9px] font-bold">
                                 <div class="flex items-center gap-2">
-                                    <button type="button" wire:click="openActivityModal({{ $lead->id }})" class="text-gray-400 hover:text-indigo-600 flex items-center gap-0.5">
+                                    <button type="button" wire:click.stop="openActivityModal({{ $lead->id }})" class="text-gray-400 hover:text-indigo-600 flex items-center gap-0.5">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
                                         Log
                                     </button>
                                     @if(!$lead->customer_id)
-                                        <button type="button" wire:click="convertToCustomer({{ $lead->id }})" class="text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5" title="Convert to Customer Directory Profile">
+                                        <button type="button" wire:click.stop="convertToCustomer({{ $lead->id }})" class="text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5" title="Convert to Customer Directory Profile">
                                             👤 Convert
                                         </button>
                                     @else
-                                        <span class="text-gray-400 cursor-default" title="Converted Customer Client">👤 Client</span>
+                                        <span class="text-gray-400 cursor-default" title="Converted Customer Client" onclick="event.stopPropagation()">👤 Client</span>
                                     @endif
                                 </div>
                                 
-                                <div class="flex items-center gap-1.5">
+                                <div class="flex items-center gap-1.5" onclick="event.stopPropagation()">
                                     @if($stageKey !== 'won' && $stageKey !== 'lost')
                                         <select 
-                                            onchange="@this.moveStage({{ $lead->id }}, this.value)"
+                                            onchange="event.stopPropagation(); @this.moveStage({{ $lead->id }}, this.value)"
+                                            onclick="event.stopPropagation()"
                                             class="p-0.5 text-[8px] bg-slate-50 border-gray-200 text-gray-600 rounded focus:ring-0 focus:border-indigo-400"
                                         >
                                             <option value="">Move...</option>
@@ -344,7 +450,7 @@ new class extends Component {
                                     @endif
 
                                     @if($stageKey === 'won')
-                                        <button type="button" wire:click="convertToQuote({{ $lead->id }})" class="text-emerald-600 hover:text-emerald-800">
+                                        <button type="button" wire:click.stop="convertToQuote({{ $lead->id }})" class="text-emerald-600 hover:text-emerald-800">
                                             + Quote
                                         </button>
                                     @endif
@@ -472,6 +578,266 @@ new class extends Component {
                             <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow">Record Interaction</button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    <!-- CrmLead Details & printable A4 Profile Modal -->
+    @if($showDetailsModal && $selectedLead)
+        <div class="fixed inset-0 z-50 overflow-y-auto">
+            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+                <div class="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-60 no-print" wire:click="$set('showDetailsModal', false)"></div>
+                
+                <div class="inline-block w-full max-w-3xl p-8 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-2xl rounded-3xl relative z-50 border border-slate-100">
+                    
+                    <!-- View Modal Header (No Print) -->
+                    <div class="flex justify-between items-center border-b border-slate-100 pb-4 mb-6 no-print">
+                        <div>
+                            <h3 class="text-lg font-black text-slate-800">Lead Prospect Profile</h3>
+                            <p class="text-xs text-slate-400">View details, log activities, print prospectus, or edit parameters.</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            @if(!$isEditingDetails)
+                                <button type="button" wire:click="$set('isEditingDetails', true)" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors">
+                                    Edit Details
+                                </button>
+                                <button onclick="window.print()" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow transition-colors flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                                    Print / PDF
+                                </button>
+                            @else
+                                <button type="button" wire:click="$set('isEditingDetails', false)" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors">
+                                    Cancel
+                                </button>
+                            @endif
+                            <button wire:click="$set('showDetailsModal', false)" class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <style>
+                        @media print {
+                            body {
+                                background: white !important;
+                                color: black !important;
+                            }
+                            body * {
+                                visibility: hidden;
+                            }
+                            #printable-lead-area, #printable-lead-area * {
+                                visibility: visible !important;
+                            }
+                            #printable-lead-area {
+                                position: fixed !important;
+                                left: 0 !important;
+                                top: 0 !important;
+                                width: 100% !important;
+                                height: 100% !important;
+                                z-index: 9999999 !important;
+                                background: white !important;
+                                color: black !important;
+                                padding: 1.5cm !important;
+                                margin: 0 !important;
+                                box-shadow: none !important;
+                                border: none !important;
+                                visibility: visible !important;
+                            }
+                            .no-print {
+                                display: none !important;
+                            }
+                        }
+                    </style>
+
+                    <!-- Modal Body Content -->
+                    <div id="printable-lead-area">
+                        @if(!$isEditingDetails)
+                            <!-- READ ONLY DETAILS -->
+                            <div class="space-y-6">
+                                <!-- Title banner -->
+                                <div class="flex justify-between items-start border-b border-slate-100 pb-4">
+                                    <div>
+                                        <h2 class="text-xl font-black text-slate-900 tracking-tight">{{ $selectedLead->title }}</h2>
+                                        <div class="text-xs text-indigo-600 font-bold mt-1 uppercase tracking-wider">{{ $selectedLead->company_name ?: 'Private Prospect' }}</div>
+                                    </div>
+                                    <div class="text-right">
+                                        @php
+                                            $stageNames = [
+                                                'new' => 'New Lead', 'contacted' => 'Contacted',
+                                                'proposal' => 'Proposal Sent', 'negotiation' => 'Negotiating',
+                                                'won' => 'Won 🎉', 'lost' => 'Lost'
+                                            ];
+                                            $badgeClr = 'bg-gray-100 text-gray-700 border-gray-200';
+                                            if ($selectedLead->pipeline_stage === 'won') $badgeClr = 'bg-emerald-50 text-emerald-700 border-emerald-100';
+                                            elseif ($selectedLead->pipeline_stage === 'lost') $badgeClr = 'bg-rose-50 text-rose-700 border-rose-100';
+                                            elseif ($selectedLead->pipeline_stage === 'negotiation') $badgeClr = 'bg-amber-50 text-amber-700 border-amber-100';
+                                            elseif ($selectedLead->pipeline_stage === 'proposal') $badgeClr = 'bg-indigo-50 text-indigo-700 border-indigo-100';
+                                        @endphp
+                                        <span class="px-3 py-1 rounded-full text-xs font-black uppercase border {{ $badgeClr }}">
+                                            {{ $stageNames[$selectedLead->pipeline_stage] ?? $selectedLead->pipeline_stage }}
+                                        </span>
+                                        <div class="text-[10px] text-slate-400 mt-1.5 font-bold font-mono">Weight: {{ $selectedLead->deal_probability }}% Probability</div>
+                                    </div>
+                                </div>
+
+                                <!-- Detail fields grid -->
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-semibold text-slate-600">
+                                    <div class="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
+                                        <span class="text-[9px] text-slate-450 uppercase tracking-wider block font-extrabold">Contact Representative</span>
+                                        <span class="text-slate-800 text-sm font-black mt-0.5 block">{{ $selectedLead->contact_name }}</span>
+                                    </div>
+                                    <div class="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
+                                        <span class="text-[9px] text-slate-450 uppercase tracking-wider block font-extrabold">Est. Deal Value</span>
+                                        <span class="text-slate-800 text-sm font-black mt-0.5 block font-mono">${{ number_format($selectedLead->deal_value, 2) }}</span>
+                                    </div>
+                                    <div class="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
+                                        <span class="text-[9px] text-slate-450 uppercase tracking-wider block font-extrabold">Email Address</span>
+                                        <a href="mailto:{{ $selectedLead->email }}" class="text-indigo-600 text-sm font-bold mt-0.5 block hover:underline">{{ $selectedLead->email }}</a>
+                                    </div>
+                                    <div class="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
+                                        <span class="text-[9px] text-slate-450 uppercase tracking-wider block font-extrabold">Phone Number</span>
+                                        <span class="text-slate-800 text-sm mt-0.5 block font-mono">{{ $selectedLead->phone ?: '--' }}</span>
+                                    </div>
+                                    <div class="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
+                                        <span class="text-[9px] text-slate-450 uppercase tracking-wider block font-extrabold">Lead Source / Origin</span>
+                                        <span class="text-slate-800 text-xs font-bold mt-0.5 block">{{ $selectedLead->source ?: '--' }}</span>
+                                    </div>
+                                    <div class="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
+                                        <span class="text-[9px] text-slate-450 uppercase tracking-wider block font-extrabold">Assigned Sales Rep</span>
+                                        <span class="text-slate-800 text-xs font-bold mt-0.5 block">{{ $selectedLead->assignedUser->name ?? '-- Unassigned --' }}</span>
+                                    </div>
+                                </div>
+
+                                <!-- Notes section -->
+                                <div class="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 text-xs">
+                                    <h4 class="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider mb-1">Deal Notes & SCM Specifications</h4>
+                                    <p class="text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">{{ $selectedLead->notes ?: 'No description notes provided for this lead.' }}</p>
+                                </div>
+
+                                <!-- Activities Timeline -->
+                                <div class="space-y-3">
+                                    <h4 class="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                        <!-- Note icon -->
+                                        <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+                                        Chronological Interactions Log
+                                    </h4>
+                                    
+                                    <div class="space-y-3 max-h-[160px] overflow-y-auto pr-1">
+                                        @forelse($selectedLead->activities as $act)
+                                            @php
+                                                $actIcons = ['call' => '📞', 'email' => '📧', 'meeting' => '🤝', 'note' => '📝'];
+                                            @endphp
+                                            <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-start gap-3 text-xs">
+                                                <span class="text-lg">{{ $actIcons[$act->type] ?? '📝' }}</span>
+                                                <div class="flex-1">
+                                                    <div class="flex justify-between font-bold">
+                                                        <span class="text-slate-800 capitalize">{{ $act->type }} interaction</span>
+                                                        <span class="text-[10px] text-slate-400 font-mono">{{ date('M d, Y', strtotime($act->activity_date)) }}</span>
+                                                    </div>
+                                                    <p class="text-slate-600 mt-1 font-medium">{{ $act->description }}</p>
+                                                    <div class="text-[9px] text-slate-400 mt-1 font-bold">Recorded by: {{ $act->user->name ?? 'System' }}</div>
+                                                </div>
+                                            </div>
+                                        @empty
+                                            <p class="text-center py-6 text-xs text-slate-400 italic">No historical activities or interactions logged for this lead. Click "Log" on pipeline card to log.</p>
+                                        @endforelse
+                                    </div>
+                                </div>
+
+                                <!-- Conversion & Delete Safeguard Row (No Print) -->
+                                <div class="flex justify-between items-center border-t border-slate-100 pt-4 mt-6 no-print">
+                                    <div class="flex items-center gap-2">
+                                        @if(!$selectedLead->customer_id)
+                                            <button type="button" wire:click="convertToCustomer({{ $selectedLead->id }})" class="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition-colors">
+                                                👤 Convert to Customer Profile
+                                            </button>
+                                        @endif
+                                        @if($selectedLead->pipeline_stage === 'won')
+                                            <button type="button" wire:click="convertToQuote({{ $selectedLead->id }})" class="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl transition-colors">
+                                                💰 Create Draft Quotation
+                                            </button>
+                                        @endif
+                                    </div>
+                                    <button type="button" 
+                                            onclick="confirm('Are you sure you want to permanently delete this lead prospect?') && @this.deleteLead({{ $selectedLead->id }})" 
+                                            class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl transition-colors"
+                                    >
+                                        Delete Lead
+                                    </button>
+                                </div>
+                            </div>
+                        @else
+                            <!-- IN-PLACE EDIT FORM -->
+                            <form wire:submit.prevent="updateLeadDetails" class="space-y-4 text-xs font-semibold text-gray-700">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="col-span-2">
+                                        <x-input-label value="Deal Title / Opportunity *" />
+                                        <x-text-input wire:model="editTitle" type="text" class="mt-1 block w-full text-xs" required />
+                                        <x-input-error :messages="$errors->get('editTitle')" class="mt-1" />
+                                    </div>
+                                    <div>
+                                        <x-input-label value="Prospect Company Name" />
+                                        <x-text-input wire:model="editCompanyName" type="text" class="mt-1 block w-full text-xs" />
+                                    </div>
+                                    <div>
+                                        <x-input-label value="Contact Person Name *" />
+                                        <x-text-input wire:model="editContactName" type="text" class="mt-1 block w-full text-xs" required />
+                                    </div>
+                                    <div>
+                                        <x-input-label value="Contact Email *" />
+                                        <x-text-input wire:model="editEmail" type="email" class="mt-1 block w-full text-xs" required />
+                                    </div>
+                                    <div>
+                                        <x-input-label value="Phone Number" />
+                                        <x-text-input wire:model="editPhone" type="text" class="mt-1 block w-full text-xs" />
+                                    </div>
+                                    <div>
+                                        <x-input-label value="Est. Deal Value ($) *" />
+                                        <x-text-input wire:model="editDealValue" type="number" step="0.01" min="0" class="mt-1 block w-full text-xs" required />
+                                    </div>
+                                    <div>
+                                        <x-input-label value="Pipeline Stage *" />
+                                        <select wire:model="editPipelineStage" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700 font-semibold" required>
+                                            <option value="new">New Lead</option>
+                                            <option value="contacted">Contacted</option>
+                                            <option value="proposal">Proposal Sent</option>
+                                            <option value="negotiation">Negotiation</option>
+                                            <option value="won">Won &amp; Close Deal 🎉</option>
+                                            <option value="lost">Lost</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <x-input-label value="Deal Probability (0 - 100%) *" />
+                                        <x-text-input wire:model="editDealProbability" type="number" min="0" max="100" class="mt-1 block w-full text-xs" required />
+                                    </div>
+                                    <div>
+                                        <x-input-label value="Assigned User" />
+                                        <select wire:model="editAssignedUserId" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700 font-semibold">
+                                            <option value="">-- Choose User --</option>
+                                            @foreach($this->getUsersList() as $usr)
+                                                <option value="{{ $usr->id }}">{{ $usr->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <x-input-label value="Source / Origin" />
+                                        <x-text-input wire:model="editSource" type="text" class="mt-1 block w-full text-xs" />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <x-input-label value="Deal Notes" />
+                                    <textarea wire:model="editNotes" rows="3" class="mt-1 block w-full rounded-xl border-gray-300 text-xs"></textarea>
+                                </div>
+
+                                <div class="mt-6 flex justify-end gap-3 pt-4 border-t border-gray-150 no-print">
+                                    <button type="button" wire:click="$set('isEditingDetails', false)" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition-colors">Cancel</button>
+                                    <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow">Save Changes</button>
+                                </div>
+                            </form>
+                        @endif
+                    </div>
                 </div>
             </div>
         </div>

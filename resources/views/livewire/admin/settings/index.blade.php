@@ -8,68 +8,141 @@ use Illuminate\Support\Facades\Schema;
 usesFileUploads();
 
 state([
-    'currency_symbol' => '$',
+    'currency_symbol'   => '$',
     'showClearDataConfirm' => false,
-    'website_name' => '',
-    'website_logo' => null,
-    'time_format' => 'H:i',
-    'date_format' => 'Y-m-d',
-    'company_location' => '',
-    'invoice_prefix' => 'INV-',
+    'website_name'      => '',
+    'website_logo'      => null,
+    'time_format'       => 'H:i',
+    'date_format'       => 'Y-m-d',
+    'timezone'          => 'UTC',
+    'company_location'  => '',
+    'invoice_prefix'    => 'INV-',
     'sales_order_prefix' => 'SO-',
+    'map_center_latitude' => '25.2048',
+    'map_center_longitude' => '55.2708',
+    'map_zoom_level'    => '10',
 ]);
 
 mount(function () {
     if (!auth()->user()->can('manage users') && !auth()->user()->hasRole('Super Admin')) abort(403);
-    $this->currency_symbol = setting('currency_symbol', '$');
-    $this->website_name = setting('website_name', 'SCM ERP');
-    $this->time_format = setting('time_format', 'H:i');
-    $this->date_format = setting('date_format', 'Y-m-d');
-    $this->company_location = setting('company_location', '');
-    $this->invoice_prefix = setting('invoice_prefix', 'INV-');
-    $this->sales_order_prefix = setting('sales_order_prefix', 'SO-');
+    $this->currency_symbol     = setting('currency_symbol', '$');
+    $this->website_name        = setting('website_name', 'SCM ERP');
+    $this->time_format         = setting('time_format', 'H:i');
+    $this->date_format         = setting('date_format', 'Y-m-d');
+    $this->timezone            = setting('timezone', config('app.timezone', 'UTC'));
+    $this->company_location    = setting('company_location', '');
+    $this->invoice_prefix      = setting('invoice_prefix', 'INV-');
+    $this->sales_order_prefix  = setting('sales_order_prefix', 'SO-');
+    $this->map_center_latitude = setting('map_center_latitude', '25.2048');
+    $this->map_center_longitude = setting('map_center_longitude', '55.2708');
+    $this->map_zoom_level      = setting('map_zoom_level', '10');
 });
 
 $saveSettings = function () {
     if (!auth()->user()->can('manage users') && !auth()->user()->hasRole('Super Admin')) abort(403);
-    
-    set_setting('currency_symbol', $this->currency_symbol);
-    set_setting('website_name', $this->website_name);
-    set_setting('time_format', $this->time_format);
-    set_setting('date_format', $this->date_format);
-    set_setting('company_location', $this->company_location);
-    set_setting('invoice_prefix', $this->invoice_prefix);
-    set_setting('sales_order_prefix', $this->sales_order_prefix);
+
+    // Validate timezone is a real PHP timezone identifier
+    $tz = $this->timezone;
+    if (!in_array($tz, timezone_identifiers_list(), true)) {
+        $tz = 'UTC';
+        $this->timezone = 'UTC';
+    }
+
+    set_setting('currency_symbol',   $this->currency_symbol);
+    set_setting('website_name',      $this->website_name);
+    set_setting('time_format',       $this->time_format);
+    set_setting('date_format',       $this->date_format);
+    set_setting('timezone',          $tz);
+    set_setting('company_location',  $this->company_location);
+    set_setting('invoice_prefix',    $this->invoice_prefix);
+    set_setting('sales_order_prefix',$this->sales_order_prefix);
+    set_setting('map_center_latitude',$this->map_center_latitude);
+    set_setting('map_center_longitude',$this->map_center_longitude);
+    set_setting('map_zoom_level',    $this->map_zoom_level);
+
+    // Apply immediately to the current request
+    config(['app.timezone' => $tz]);
+    date_default_timezone_set($tz);
+    // Carbon automatically picks up PHP's native timezone — no separate call needed
 
     if ($this->website_logo) {
         $path = $this->website_logo->store('logos', 'public');
         set_setting('website_logo', '/storage/' . $path);
     }
 
-    session()->flash('message', 'Settings updated successfully.');
+    session()->flash('message', 'Settings updated successfully. Timezone is now ' . $tz . '.');
 };
 
 $clearData = function () {
     if (!auth()->user()->hasRole('Super Admin')) abort(403, 'Only Super Admin can clear data.');
-    
+
     DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+
+    // ─── LEVEL 3: Deepest children (leaf rows with no further dependants) ───
     $tables = [
-        'account_payables', 'account_receivables', 'customers', 'drivers', 
-        'goods_receipt_note_items', 'goods_receipt_notes', 'inventory_adjustments', 
-        'inventory_logs', 'invoice_items', 'invoices', 'payment_logs', 
-        'products', 'purchase_order_items', 'purchase_orders', 'return_items', 
-        'returns', 'sales_order_items', 'sales_orders', 'shipments', 
-        'suppliers', 'vehicles', 'warehouse_bins', 'warehouse_racks', 
-        'warehouse_zones', 'warehouses'
+        // CRM Module
+        'crm_activities',           // child of crm_leads
+
+        // Quotation Module
+        'quotation_items',          // child of quotations
+
+        // Project Module
+        'project_material_requests',// child of project_milestones & projects
+        'project_milestones',       // child of projects
+
+        // Procurement Module
+        'purchase_order_items',     // child of purchase_orders
+        'goods_receipt_notes',      // child of purchase_orders
+
+        // Sales Module
+        'sales_order_items',        // child of sales_orders
+        'return_request_items',     // child of return_requests
+        'return_requests',          // child of sales_orders / customers
+        'shipments',                // child of sales_orders / drivers / vehicles
+
+        // Finance Module
+        'payment_logs',             // child of account_payables / account_receivables
+        'account_payables',         // child of purchase_orders / suppliers
+        'account_receivables',      // child of sales_orders / customers
+        'invoices',                 // child of sales_orders / customers
+        'expenses',                 // child of purchase_orders (optional FK)
+
+        // Inventory Module
+        'bin_product_stock',        // child of warehouse_bins / products
+        'bin_transfers',            // child of warehouse_bins / products
+        'inventory_transactions',   // child of warehouse_bins / products
+        'stock_take_items',         // child of stock_takes
+        'stock_takes',              // child of warehouses
+
+        // RFQ Module
+        'rfqs',                     // child of suppliers
+
+        // ─── LEVEL 2: Mid-tier parents ───────────────────────────────────
+        'quotations',               // child of customers
+        'projects',                 // child of customers / quotations
+        'crm_leads',                // standalone CRM entity
+        'sales_orders',             // child of customers
+        'purchase_orders',          // child of suppliers
+        'warehouse_bins',           // child of warehouses
+
+        // ─── LEVEL 1: Root parents ───────────────────────────────────────
+        'customers',
+        'suppliers',
+        'products',
+        'drivers',
+        'vehicles',
+        'warehouses',
     ];
+
     foreach ($tables as $table) {
         if (Schema::hasTable($table)) {
             DB::table($table)->truncate();
         }
     }
+
     DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-    
-    session()->flash('danger_message', 'All operational ERP data has been permanently cleared.');
+
+    session()->flash('danger_message', 'All operational ERP data has been permanently cleared. Modules wiped: CRM, Quotations, RFQs, Projects, Sales Orders, Purchase Orders, Inventory, Warehouses, Finance (AP/AR/Invoices/Payments), Logistics, Stock Takes.');
     $this->showClearDataConfirm = false;
 };
 
@@ -162,6 +235,55 @@ $clearData = function () {
                                     </select>
                                 </div>
 
+                                <!-- Timezone -->
+                                <div class="md:col-span-2">
+                                    <label for="timezone" class="block text-sm font-medium text-gray-700">
+                                        Timezone
+                                        <span class="ml-2 text-xs font-normal text-gray-400">— affects all dates &amp; times site-wide</span>
+                                    </label>
+
+                                    {{-- Live clock preview --}}
+                                    <div class="mt-1 mb-2 flex items-center gap-2">
+                                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                            </svg>
+                                            Current server time in selected zone:
+                                            <strong>{{ now()->timezone($timezone)->format('D, d M Y — H:i:s T') }}</strong>
+                                        </span>
+                                    </div>
+
+                                    <select wire:model.live="timezone" id="timezone"
+                                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+
+                                        @php
+                                            $allTz   = timezone_identifiers_list();
+                                            $grouped = [];
+                                            foreach ($allTz as $tz) {
+                                                $region = strpos($tz, '/') !== false
+                                                    ? explode('/', $tz)[0]
+                                                    : 'Other';
+                                                $grouped[$region][] = $tz;
+                                            }
+                                            ksort($grouped);
+                                        @endphp
+
+                                        @foreach($grouped as $region => $zones)
+                                            <optgroup label="{{ $region }}">
+                                                @foreach($zones as $tz)
+                                                    <option value="{{ $tz }}" @selected($this->timezone === $tz)>
+                                                        {{ str_replace('_', ' ', $tz) }}
+                                                        (UTC{{ now()->timezone($tz)->format('P') }})
+                                                    </option>
+                                                @endforeach
+                                            </optgroup>
+                                        @endforeach
+                                    </select>
+                                    <p class="mt-1.5 text-xs text-gray-400">
+                                        Stored timezone: <code class="font-mono bg-gray-100 px-1 rounded">{{ $timezone }}</code>
+                                    </p>
+                                </div>
+
                                 <!-- Invoice Prefix -->
                                 <div>
                                     <label for="invoice_prefix" class="block text-sm font-medium text-gray-700">Invoice Prefix</label>
@@ -172,6 +294,34 @@ $clearData = function () {
                                 <div>
                                     <label for="sales_order_prefix" class="block text-sm font-medium text-gray-700">Sales Order Prefix</label>
                                     <input wire:model="sales_order_prefix" id="sales_order_prefix" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="SO-" />
+                                </div>
+
+                                <!-- Live Map Configuration Section Header -->
+                                <div class="md:col-span-2 border-t border-gray-150 pt-6 mt-4">
+                                    <h3 class="text-sm font-extrabold text-gray-800 uppercase tracking-wider">Live Fleet Map Configuration</h3>
+                                    <p class="text-xs text-gray-400 mt-1">Configure default coordinates and zoom level for the Fleet Dispatch Board live tracking map.</p>
+                                </div>
+
+                                <!-- Map Default Latitude -->
+                                <div>
+                                    <label for="map_center_latitude" class="block text-sm font-medium text-gray-700">Default Center Latitude</label>
+                                    <input wire:model="map_center_latitude" id="map_center_latitude" type="number" step="0.0001" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono" placeholder="25.2048" required />
+                                </div>
+
+                                <!-- Map Default Longitude -->
+                                <div>
+                                    <label for="map_center_longitude" class="block text-sm font-medium text-gray-700">Default Center Longitude</label>
+                                    <input wire:model="map_center_longitude" id="map_center_longitude" type="number" step="0.0001" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono" placeholder="55.2708" required />
+                                </div>
+
+                                <!-- Map Default Zoom Level -->
+                                <div>
+                                    <label for="map_zoom_level" class="block text-sm font-medium text-gray-700">Default Zoom Level</label>
+                                    <select wire:model="map_zoom_level" id="map_zoom_level" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-semibold text-gray-700" required>
+                                        @for($z = 1; $z <= 19; $z++)
+                                            <option value="{{ $z }}">{{ $z }} - {{ $z <= 6 ? 'Global' : ($z <= 12 ? 'City' : 'Street') }}</option>
+                                        @endfor
+                                    </select>
                                 </div>
                             </div>
 
@@ -226,9 +376,20 @@ $clearData = function () {
                             </svg>
                         </div>
                         <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                            <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Clear ERP Data</h3>
+                            <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Clear All ERP Data</h3>
                             <div class="mt-2">
-                                <p class="text-sm text-gray-500">Are you absolutely sure you want to clear all data? This will permanently delete all operational records. This action cannot be undone.</p>
+                                <p class="text-sm text-gray-500 mb-3">Are you absolutely sure? This will <strong class="text-red-600">permanently delete</strong> all operational records. This action <strong>cannot be undone</strong>.</p>
+                                <p class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Tables that will be wiped:</p>
+                                <ul class="text-xs text-gray-500 space-y-0.5 list-disc list-inside">
+                                    <li><span class="font-medium text-gray-700">CRM:</span> Leads, Activities</li>
+                                    <li><span class="font-medium text-gray-700">Sales:</span> Quotations, Sales Orders, Returns, Shipments</li>
+                                    <li><span class="font-medium text-gray-700">Procurement:</span> RFQs, Purchase Orders, GRNs, Expenses</li>
+                                    <li><span class="font-medium text-gray-700">Projects:</span> Projects, Milestones, Material Requests</li>
+                                    <li><span class="font-medium text-gray-700">Inventory:</span> Bin Stocks, Transfers, Transactions, Stock Takes</li>
+                                    <li><span class="font-medium text-gray-700">Finance:</span> AP, AR, Invoices, Payment Logs</li>
+                                    <li><span class="font-medium text-gray-700">Master Data:</span> Customers, Suppliers, Products, Drivers, Vehicles, Warehouses</li>
+                                </ul>
+                                <p class="text-xs text-green-700 mt-2">✓ User accounts, roles, permissions, and system settings will <strong>NOT</strong> be deleted.</p>
                             </div>
                         </div>
                     </div>

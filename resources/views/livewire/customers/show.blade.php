@@ -220,36 +220,40 @@ new class extends Component {
 }; ?>
 
 <div>
-    <style>
-        @media print {
-            body {
-                background: white !important;
-                color: black !important;
+    @if($previewMode)
+        <style>
+            @media print {
+                body {
+                    background: white !important;
+                    color: black !important;
+                }
+                body * {
+                    visibility: hidden;
+                }
+                #printable-certificate, #printable-certificate * {
+                    visibility: visible !important;
+                }
+                #printable-certificate {
+                    position: fixed !important;
+                    left: 0 !important;
+                    top: 0 !important;
+                    width: 100% !important;
+                    height: 100% !important;
+                    z-index: 9999999 !important;
+                    background: white !important;
+                    color: black !important;
+                    padding: 1.5cm !important;
+                    margin: 0 !important;
+                    box-shadow: none !important;
+                    border: none !important;
+                    visibility: visible !important;
+                }
+                .no-print {
+                    display: none !important;
+                }
             }
-            .no-print, aside, nav, header, footer, button, .tabs-container {
-                display: none !important;
-            }
-            .main-content, main, .py-12, .max-w-7xl {
-                padding: 0 !important;
-                margin: 0 !important;
-                max-width: 100% !important;
-                width: 100% !important;
-                box-shadow: none !important;
-                border: none !important;
-                background: transparent !important;
-            }
-            #printable-certificate {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                border: none !important;
-                box-shadow: none !important;
-                padding: 10px !important;
-                margin: 0 !important;
-            }
-        }
-    </style>
+        </style>
+    @endif
 
     <x-slot name="header">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full no-print">

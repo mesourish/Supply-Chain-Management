@@ -122,13 +122,46 @@ new class extends Component {
             ->get();
 
         // 2. Trend Data (Revenue vs Spend)
-        $trendDays = $this->timeframe === 'today' ? 1 : ($this->timeframe === '7_days' ? 7 : 30);
-        
         $labels = [];
         $revSeries = [];
         $spendSeries = [];
 
-        if ($this->timeframe === 'all_time' || $this->timeframe === 'this_month') {
+        if ($this->timeframe === 'today') {
+            // 6 intervals of 4 hours to display a beautiful continuous trend curve for the day
+            for ($hour = 0; $hour < 24; $hour += 4) {
+                $startHour = now()->startOfDay()->addHours($hour);
+                $endHour = $startHour->copy()->addHours(4)->subSecond();
+                $labels[] = $startHour->format('H:i');
+                
+                $revSeries[] = SalesOrder::whereIn('status', ['confirmed', 'processing', 'shipped', 'delivered'])
+                    ->whereBetween('created_at', [$startHour, $endHour])
+                    ->sum('total_amount');
+                    
+                $spendSeries[] = PurchaseOrder::whereIn('status', ['approved', 'partially_received', 'received'])
+                    ->whereBetween('created_at', [$startHour, $endHour])
+                    ->sum('total_amount') + Expense::whereBetween('expense_date', [$startHour->toDateString(), $startHour->toDateString()])
+                    ->whereBetween('created_at', [$startHour, $endHour])
+                    ->sum('amount');
+            }
+        } elseif ($this->timeframe === 'this_month') {
+            // Show every single day of the current month so far / total days
+            $daysInMonth = now()->daysInMonth;
+            for ($i = 1; $i <= $daysInMonth; $i++) {
+                $day = now()->startOfMonth()->addDays($i - 1);
+                $labels[] = $day->format('M d');
+                $dayStart = $day->copy()->startOfDay();
+                $dayEnd = $day->copy()->endOfDay();
+                
+                $revSeries[] = SalesOrder::whereIn('status', ['confirmed', 'processing', 'shipped', 'delivered'])
+                    ->whereBetween('created_at', [$dayStart, $dayEnd])
+                    ->sum('total_amount');
+                    
+                $spendSeries[] = PurchaseOrder::whereIn('status', ['approved', 'partially_received', 'received'])
+                    ->whereBetween('created_at', [$dayStart, $dayEnd])
+                    ->sum('total_amount') + Expense::whereBetween('expense_date', [$day->toDateString(), $day->toDateString()])->sum('amount');
+            }
+        } elseif ($this->timeframe === 'all_time') {
+            // Show monthly intervals over the past 6 months
             for ($i = 5; $i >= 0; $i--) {
                 $monthStart = now()->subMonths($i)->startOfMonth();
                 $monthEnd = now()->subMonths($i)->endOfMonth();
@@ -143,6 +176,8 @@ new class extends Component {
                     ->sum('total_amount') + Expense::whereBetween('expense_date', [$monthStart->toDateString(), $monthEnd->toDateString()])->sum('amount');
             }
         } else {
+            // 7_days or 30_days
+            $trendDays = $this->timeframe === '7_days' ? 7 : 30;
             for ($i = $trendDays - 1; $i >= 0; $i--) {
                 $day = now()->subDays($i);
                 $labels[] = $day->format('M d');
@@ -160,8 +195,8 @@ new class extends Component {
         }
         
         $this->trendLabels = $labels;
-        $this->revenueTrend = $revSeries;
-        $this->spendTrend = $spendSeries;
+        $this->revenueTrend = array_map('floatval', $revSeries);
+        $this->spendTrend = array_map('floatval', $spendSeries);
 
         // 3. Categories Distribution
         $categoryData = Product::groupBy('category')
@@ -175,7 +210,7 @@ new class extends Component {
                 $this->categoryLabels[$idx] = 'Uncategorized';
             }
         }
-        $this->categoryCounts = array_values($categoryData);
+        $this->categoryCounts = array_map('intval', array_values($categoryData));
 
         // 4. Shipment Status Distribution
         $shipmentData = Shipment::groupBy('status')
@@ -219,29 +254,9 @@ new class extends Component {
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 
     <x-slot name="header">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 w-full">
-            <h2 class="font-semibold text-2xl text-gray-800 leading-tight">
-                {{ __('SCM Dashboard') }}
-            </h2>
-            
-            <!-- Dynamic Operations Timeframe Filter -->
-            <div class="flex items-center bg-white shadow-sm border border-gray-200 rounded-xl p-1 gap-1">
-                @foreach([
-                    'today' => 'Today', 
-                    '7_days' => '7 Days', 
-                    '30_days' => '30 Days', 
-                    'this_month' => 'This Month', 
-                    'all_time' => 'All Time'
-                ] as $key => $label)
-                    <button 
-                        wire:click="setTimeframe('{{ $key }}')"
-                        class="px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 {{ $timeframe === $key ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100' }}"
-                    >
-                        {{ $label }}
-                    </button>
-                @endforeach
-            </div>
-        </div>
+        <h2 class="font-semibold text-2xl text-gray-800 leading-tight">
+            {{ __('SCM Dashboard') }}
+        </h2>
     </x-slot>
 
     <div class="py-8">
@@ -293,6 +308,40 @@ new class extends Component {
                             Server Time: <span class="text-white font-mono font-semibold">{{ now()->format('H:i') }}</span>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Dynamic Operations Timeframe Filter (Control Panel) -->
+            <div class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 flex flex-col lg:flex-row items-center justify-between gap-4 transition-all duration-200">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                        <!-- Calendar icon -->
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-bold text-slate-800">Dynamic Reporting Interval</h4>
+                        <p class="text-xs text-slate-400">Select reporting period to dynamically filter and reload key indicators, audit logs, and charts.</p>
+                    </div>
+                </div>
+
+                <!-- Interval Buttons -->
+                <div class="flex flex-wrap items-center bg-slate-50 border border-slate-100 rounded-2xl p-1 gap-1 w-full lg:w-auto">
+                    @foreach([
+                        'today' => 'Today', 
+                        '7_days' => '7 Days', 
+                        '30_days' => '30 Days', 
+                        'this_month' => 'This Month', 
+                        'all_time' => 'All Time'
+                    ] as $key => $label)
+                        <button 
+                            wire:click="setTimeframe('{{ $key }}')"
+                            class="px-4 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex-1 lg:flex-initial text-center {{ $timeframe === $key ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-150/80' }}"
+                        >
+                            {{ $label }}
+                        </button>
+                    @endforeach
                 </div>
             </div>
 
@@ -377,30 +426,31 @@ new class extends Component {
             <!-- 3. Dynamic Visualizations Layer (Charts) -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <!-- Trend Chart: Revenue vs Spend -->
-                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150 lg:col-span-2">
-                    <div class="flex items-center justify-between mb-4">
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150 lg:col-span-2 overflow-hidden flex flex-col">
+                    <div class="flex items-center justify-between mb-4 flex-shrink-0">
                         <div>
-                            <h3 class="text-lg font-bold text-gray-900">Financial Revenue & Procurement Spend</h3>
+                            <h3 class="text-lg font-bold text-gray-900">Financial Revenue &amp; Procurement Spend</h3>
                             <p class="text-xs text-gray-400">Time-series overview of incoming sales vs procurement investments</p>
                         </div>
-                        <span class="text-xs font-semibold px-2.5 py-1 bg-gray-100 text-gray-700 rounded-lg uppercase">Spline Area</span>
+                        <span class="text-xs font-semibold px-2.5 py-1 bg-gray-100 text-gray-700 rounded-lg uppercase whitespace-nowrap">Spline Area</span>
                     </div>
-                    <div id="financial-trend-chart" class="w-full h-80"></div>
+                    <!-- Chart container: fixed height, overflow clipped by parent -->
+                    <div id="financial-trend-chart" class="w-full flex-1 min-h-0" style="height: 300px;"></div>
                 </div>
 
                 <!-- Donut Chart: Inventory Categories -->
-                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150 flex flex-col justify-between">
-                    <div>
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150 flex flex-col overflow-hidden">
+                    <div class="flex-shrink-0">
                         <div class="flex items-center justify-between mb-2">
                             <h3 class="text-lg font-bold text-gray-900">Category Breakdown</h3>
                             <span class="text-xs font-semibold px-2.5 py-1 bg-gray-100 text-gray-700 rounded-lg">Product Count</span>
                         </div>
                         <p class="text-xs text-gray-400 mb-4">Distribution of current inventory items by category</p>
                     </div>
-                    <div class="flex items-center justify-center py-4">
-                        <div id="category-donut-chart" class="w-full max-w-[280px]"></div>
+                    <div class="flex items-center justify-center flex-1 min-h-0">
+                        <div id="category-donut-chart" class="w-full"></div>
                     </div>
-                    <div class="border-t border-gray-100 pt-4 text-center">
+                    <div class="border-t border-gray-100 pt-4 text-center flex-shrink-0">
                         <a href="{{ url('/products') }}" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
                             Manage All Products &rarr;
                         </a>
@@ -503,7 +553,7 @@ new class extends Component {
                                 <div class="w-full bg-gray-100 rounded-full h-3">
                                     @php
                                         $totalOutstanding = $accountsReceivableUnpaid + $accountsPayableUnpaid;
-                                        $arPct = $totalOutstanding > 0 ? ($accountsReceivableUnpaid / $totalOutstanding) * 100 : 50;
+                                        $arPct = $totalOutstanding > 0 ? ($accountsReceivableUnpaid / $totalOutstanding) * 100 : 0;
                                     @endphp
                                     <div class="bg-indigo-600 h-3 rounded-full transition-all duration-500" style="width: {{ $arPct }}%"></div>
                                 </div>
@@ -524,7 +574,7 @@ new class extends Component {
                                 </div>
                                 <div class="w-full bg-gray-100 rounded-full h-3">
                                     @php
-                                        $apPct = $totalOutstanding > 0 ? ($accountsPayableUnpaid / $totalOutstanding) * 100 : 50;
+                                        $apPct = $totalOutstanding > 0 ? ($accountsPayableUnpaid / $totalOutstanding) * 100 : 0;
                                     @endphp
                                     <div class="bg-red-500 h-3 rounded-full transition-all duration-500" style="width: {{ $apPct }}%"></div>
                                 </div>
@@ -632,10 +682,13 @@ new class extends Component {
             const trendOptions = {
                 chart: {
                     type: 'area',
-                    height: 320,
+                    height: 300,
+                    parentHeightOffset: 0,
                     toolbar: { show: false },
                     zoom: { enabled: false },
-                    fontFamily: 'Inter, sans-serif'
+                    fontFamily: 'Inter, sans-serif',
+                    redrawOnParentResize: true,
+                    redrawOnWindowResize: true,
                 },
                 colors: ['#4f46e5', '#10b981'],
                 dataLabels: { enabled: false },
@@ -714,22 +767,35 @@ new class extends Component {
 
             // Listen for Livewire updates to dynamically redraw charts
             window.addEventListener('timeframe-changed', (event) => {
-                const data = event.detail[0];
-                if (trendChartInstance) {
+                // Defensively unpack Livewire custom event details
+                let data = event.detail;
+                if (Array.isArray(event.detail) && event.detail.length > 0) {
+                    data = event.detail[0];
+                } else if (event.detail && event.detail.data) {
+                    data = event.detail.data;
+                }
+
+                if (!data) return;
+
+                // Update trend chart atomically (series + options combined) to prevent race conditions
+                if (trendChartInstance && data.trendLabels && data.revenueTrend && data.spendTrend) {
                     trendChartInstance.updateOptions({
-                        xaxis: { categories: data.trendLabels }
+                        xaxis: { 
+                            categories: data.trendLabels 
+                        },
+                        series: [
+                            { name: 'Revenue', data: data.revenueTrend.map(Number) },
+                            { name: 'Spend', data: data.spendTrend.map(Number) }
+                        ]
                     });
-                    trendChartInstance.updateSeries([
-                        { name: 'Revenue', data: data.revenueTrend },
-                        { name: 'Spend', data: data.spendTrend }
-                    ]);
                 }
                 
-                if (donutChartInstance) {
+                // Update donut chart atomically (series + options combined) to prevent race conditions
+                if (donutChartInstance && data.categoryLabels && data.categoryCounts) {
                     donutChartInstance.updateOptions({
-                        labels: data.categoryLabels
+                        labels: data.categoryLabels,
+                        series: data.categoryCounts.map(Number)
                     });
-                    donutChartInstance.updateSeries(data.categoryCounts);
                 }
             });
         });

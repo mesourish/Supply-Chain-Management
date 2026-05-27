@@ -4,25 +4,26 @@ use App\Models\Shipment;
 use App\Models\Driver;
 use App\Models\Vehicle;
 use Livewire\Volt\Component;
+use Illuminate\Support\Facades\DB;
 
 new class extends Component {
     public function with()
     {
         return [
-            // Active shipments to show on the map or assign
+            // Active shipments to show on the map or assign (case-insensitive)
             'shipments' => Shipment::with(['salesOrder.customer', 'vehicle', 'driver.user'])
-                ->whereIn('status', ['processing', 'dispatched', 'in_transit'])
+                ->whereIn(DB::raw('LOWER(status)'), ['processing', 'dispatched', 'in_transit'])
                 ->get(),
             
-            // Unassigned shipments for the dispatch board
+            // Unassigned shipments for the dispatch board (case-insensitive)
             'unassignedShipments' => Shipment::with(['salesOrder.customer'])
-                ->where('status', 'processing')
+                ->where(DB::raw('LOWER(status)'), 'processing')
                 ->whereNull('driver_id')
                 ->get(),
 
-            // Online/Active Drivers for the map
+            // Online/Active Drivers for the map (case-insensitive, includes legacy 'active' driver statuses too)
             'drivers' => Driver::with(['user', 'vehicle'])
-                ->whereIn('status', ['online', 'on_job'])
+                ->whereIn(DB::raw('LOWER(status)'), ['online', 'on_job', 'active'])
                 ->whereNotNull('latitude')
                 ->whereNotNull('longitude')
                 ->get(),
@@ -115,11 +116,11 @@ new class extends Component {
             },
 
             initMap() {
-                // Default center (can be company HQ)
-                // Let's pick a random US center or just use 0,0 if nothing
-                const defaultCenter = [37.7749, -122.4194]; // SF as placeholder
+                // Default center (dynamic settings loaded from configuration page)
+                const defaultCenter = [{{ setting('map_center_latitude', '25.2048') }}, {{ setting('map_center_longitude', '55.2708') }}];
+                const defaultZoom = {{ setting('map_zoom_level', '10') }};
 
-                this.map = L.map('map').setView(defaultCenter, 10);
+                this.map = L.map('map').setView(defaultCenter, defaultZoom);
 
                 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
                     attribution: '&copy; OpenStreetMap contributors &copy; CARTO',

@@ -11,7 +11,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->web(append: [
+            \App\Http\Middleware\SetTimezone::class,
+            \App\Http\Middleware\FixSubfolderIntendedUrl::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
