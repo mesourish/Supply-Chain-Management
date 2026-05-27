@@ -8,273 +8,514 @@
         <title>{{ config('app.name', 'SCM ERP') }}</title>
 
         <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet" />
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
-        <!-- Scripts & Styles via CDN instead of Vite -->
+        <!-- Tailwind CDN -->
         <script src="https://cdn.tailwindcss.com"></script>
 
-        <!-- Leaflet CSS for Maps -->
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+        <!-- Leaflet CSS -->
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+              integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 
         <style>
-            body { font-family: 'Inter', sans-serif; }
+            /* ── Font & reset ── */
+            * { font-family: 'Inter', sans-serif; box-sizing: border-box; }
             [x-cloak] { display: none !important; }
+
+            /* ── Scrollbar styling ── */
+            ::-webkit-scrollbar { width: 5px; height: 5px; }
+            ::-webkit-scrollbar-track { background: transparent; }
+            ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.3); border-radius: 99px; }
+            ::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.6); }
+
+            /* ── Sidebar ── */
+            .sidebar {
+                background: linear-gradient(180deg, #0c0e1a 0%, #0f1223 60%, #0a0d1c 100%);
+                border-right: 1px solid rgba(255,255,255,0.06);
+                position: relative;
+                overflow: hidden;
+            }
+            .sidebar::before {
+                content: '';
+                position: absolute;
+                top: 0; left: 0; right: 0;
+                height: 200px;
+                background: radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.12) 0%, transparent 70%);
+                pointer-events: none;
+            }
+
+            /* ── Nav items ── */
+            .nav-item {
+                display: flex; align-items: center;
+                padding: 9px 14px; border-radius: 10px;
+                font-size: 13.5px; font-weight: 500;
+                color: rgba(255,255,255,0.5);
+                transition: all .18s ease;
+                position: relative; cursor: pointer;
+                gap: 10px;
+            }
+            .nav-item:hover {
+                color: rgba(255,255,255,0.9);
+                background: rgba(255,255,255,0.06);
+            }
+            .nav-item.active {
+                color: #fff;
+                background: rgba(99,102,241,0.18);
+                border: 1px solid rgba(99,102,241,0.25);
+            }
+            .nav-item.active .nav-icon { color: #818cf8; }
+            .nav-item:hover .nav-icon { color: rgba(255,255,255,0.8); }
+            .nav-icon { color: rgba(255,255,255,0.3); transition: color .18s; flex-shrink: 0; }
+
+            /* ── Active indicator bar ── */
+            .nav-item.active::before {
+                content: '';
+                position: absolute;
+                left: 0; top: 20%; bottom: 20%;
+                width: 3px; border-radius: 0 3px 3px 0;
+                background: linear-gradient(180deg, #818cf8, #6366f1);
+            }
+
+            /* ── Sub-nav ── */
+            .sub-nav-item {
+                display: block; padding: 7px 12px;
+                font-size: 13px; font-weight: 400;
+                color: rgba(255,255,255,0.4);
+                border-radius: 8px;
+                transition: all .15s ease;
+            }
+            .sub-nav-item:hover {
+                color: rgba(255,255,255,0.85);
+                background: rgba(255,255,255,0.05);
+            }
+            .sub-nav-item.active {
+                color: #c7d2fe;
+                background: rgba(99,102,241,0.12);
+            }
+
+            /* ── Section label ── */
+            .nav-section-label {
+                font-size: 10px; font-weight: 700;
+                letter-spacing: .1em; text-transform: uppercase;
+                color: rgba(255,255,255,0.2);
+                padding: 12px 14px 4px;
+            }
+
+            /* ── Top bar ── */
+            .topbar {
+                background: #ffffff;
+                border-bottom: 1px solid #f1f5f9;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            }
+
+            /* ── Main content ── */
+            .main-content {
+                background: #f8fafc;
+            }
+
+            /* ── Logo pill ── */
+            .logo-pill {
+                display: flex; align-items: center; gap: 10px;
+                padding: 6px 10px 6px 6px;
+                border-radius: 12px;
+                transition: background .2s;
+            }
+            .logo-pill:hover { background: rgba(255,255,255,0.05); }
+            .logo-icon {
+                width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+                background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                display: flex; align-items: center; justify-content: center;
+                box-shadow: 0 2px 8px rgba(99,102,241,0.4);
+            }
+
+            /* ── User chip ── */
+            .user-avatar {
+                width: 36px; height: 36px; border-radius: 50%;
+                background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                display: flex; align-items: center; justify-content: center;
+                color: #fff; font-weight: 700; font-size: 14px;
+                flex-shrink: 0;
+                box-shadow: 0 2px 8px rgba(99,102,241,0.35);
+            }
+
+            /* ── Badge ── */
+            .nav-badge {
+                font-size: 10px; font-weight: 700;
+                padding: 1px 6px; border-radius: 99px;
+                background: rgba(99,102,241,0.25);
+                color: #a5b4fc;
+            }
+
+            /* ── Collapse transition ── */
+            [x-collapse] { overflow: hidden; }
+
+            /* ── Breadcrumb ── */
+            .breadcrumb { font-size: 13px; color: #64748b; }
+            .breadcrumb span { color: #94a3b8; margin: 0 4px; }
+
+            /* ── Page title ── */
+            .page-title { font-size: 18px; font-weight: 700; color: #0f172a; line-height: 1.2; }
         </style>
     </head>
-    <body class="bg-gray-100 text-gray-900 antialiased font-sans">
+    <body class="antialiased font-sans" style="background:#f8fafc;">
 
-        <div x-data="{ sidebarOpen: true }" class="flex h-screen overflow-hidden">
-            
-            <!-- Sidebar -->
-            <aside 
-                :class="sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-0 lg:w-20 lg:translate-x-0'"
-                class="fixed inset-y-0 left-0 z-50 flex flex-col transition-all duration-300 ease-in-out bg-gray-900 text-white shadow-xl lg:static lg:h-auto overflow-y-auto"
-            >
+        <div x-data="{ sidebarOpen: true, isMobile: window.innerWidth < 1024 }"
+             x-init="() => { if(window.innerWidth < 1024) sidebarOpen = false; window.addEventListener('resize', () => { isMobile = window.innerWidth < 1024; if(!isMobile) sidebarOpen = true; }) }"
+             class="flex h-screen overflow-hidden">
+
+            <!-- ═══════════════════════════════════════
+                 SIDEBAR
+            ═══════════════════════════════════════ -->
+            <aside class="sidebar flex-shrink-0 flex flex-col transition-all duration-300 ease-in-out z-50"
+                   :class="sidebarOpen ? 'w-60' : 'w-0 lg:w-[68px] overflow-hidden'"
+                   style="position: fixed; inset-y: 0; left: 0; height: 100vh;">
+
                 <!-- Sidebar Header -->
-                <div class="flex items-center justify-between h-16 px-4 bg-gray-800 border-b border-gray-700">
-                    <div class="flex items-center gap-2 overflow-hidden whitespace-nowrap" x-show="sidebarOpen || window.innerWidth < 1024">
-                        @if(setting('website_logo'))
-                            <img src="{{ setting('website_logo') }}" class="w-8 h-8 object-contain" alt="Logo">
-                        @else
-                            <svg class="w-8 h-8 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                        @endif
-                        <span class="text-xl font-bold tracking-wider">{{ setting('website_name', 'SCM ERP') }}</span>
-                    </div>
-                    <!-- Small Logo for Collapsed State on LG screens -->
-                    <div class="hidden lg:flex items-center justify-center w-full" x-show="!sidebarOpen" style="display: none;">
-                        @if(setting('website_logo'))
-                            <img src="{{ setting('website_logo') }}" class="w-8 h-8 object-contain" alt="Logo">
-                        @else
-                            <svg class="w-8 h-8 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                        @endif
-                    </div>
+                <div class="flex items-center justify-between px-3 h-16 flex-shrink-0"
+                     style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+                    <!-- Logo -->
+                    <a href="{{ url('/dashboard') }}" class="logo-pill" x-show="sidebarOpen" style="text-decoration:none;">
+                        <div class="logo-icon">
+                            @if(setting('website_logo'))
+                                <img src="{{ setting('website_logo') }}" class="w-5 h-5 object-contain" alt="">
+                            @else
+                                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                                </svg>
+                            @endif
+                        </div>
+                        <span class="text-sm font-bold text-white whitespace-nowrap tracking-wide">
+                            {{ setting('website_name', 'SCM ERP') }}
+                        </span>
+                    </a>
 
-                    <button @click="sidebarOpen = false" class="lg:hidden text-gray-400 hover:text-white">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
+                    <!-- Collapsed icon-only logo -->
+                    <a href="{{ url('/dashboard') }}" x-show="!sidebarOpen" class="logo-icon mx-auto" style="text-decoration:none; display:none;" :style="!sidebarOpen ? 'display:flex' : ''">
+                        @if(setting('website_logo'))
+                            <img src="{{ setting('website_logo') }}" class="w-5 h-5 object-contain" alt="">
+                        @else
+                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                            </svg>
+                        @endif
+                    </a>
                 </div>
 
-                <!-- Navigation Links -->
-                <nav class="flex-1 px-2 py-4 space-y-2">
-                    
+                <!-- Navigation -->
+                <nav class="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+
+                    <!-- MAIN SECTION -->
+                    <div x-show="sidebarOpen" class="nav-section-label">Main</div>
+
                     <!-- Dashboard -->
-                    <a href="{{ url('/dashboard') }}" class="flex items-center px-4 py-2 text-sm font-medium rounded-md group {{ request()->is('dashboard') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white' }}">
-                        <svg class="w-5 h-5 mr-3 {{ request()->is('dashboard') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-indigo-400' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-                        <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">Dashboard</span>
-                    </a>
-
-                    <!-- CRM MODULE -->
-                    <a href="{{ url('/crm/leads') }}" class="flex items-center px-4 py-2 text-sm font-medium rounded-md group {{ request()->is('crm*') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white' }}">
-                        <svg class="w-5 h-5 mr-3 {{ request()->is('crm*') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-indigo-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    <a href="{{ url('/dashboard') }}"
+                       class="nav-item {{ request()->is('dashboard') ? 'active' : '' }}"
+                       title="Dashboard">
+                        <svg class="nav-icon w-4.5 h-4.5 w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
                         </svg>
-                        <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">CRM Leads</span>
+                        <span x-show="sidebarOpen" class="whitespace-nowrap">Dashboard</span>
                     </a>
 
-                    <!-- INVENTORY MODULE -->
+                    <!-- CRM -->
+                    <a href="{{ url('/crm/leads') }}"
+                       class="nav-item {{ request()->is('crm*') ? 'active' : '' }}"
+                       title="CRM Leads">
+                        <svg class="nav-icon w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                        </svg>
+                        <span x-show="sidebarOpen" class="whitespace-nowrap">CRM Leads</span>
+                    </a>
+
+                    <!-- OPERATIONS SECTION -->
+                    <div x-show="sidebarOpen" class="nav-section-label mt-2">Operations</div>
+
+                    <!-- INVENTORY -->
                     @can('view products')
-                    <div x-data="{ open: {{ request()->is('products*') || request()->is('warehouses*') || request()->is('inventory*') ? 'true' : 'false' }} }" class="space-y-1">
-                        <button @click="open = !open; if(!sidebarOpen) sidebarOpen = true;" class="flex items-center justify-between w-full px-4 py-2 text-sm font-medium rounded-md group {{ request()->is('products*') || request()->is('warehouses*') || request()->is('inventory*') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white' }}">
-                            <div class="flex items-center">
-                                <svg class="w-5 h-5 mr-3 {{ request()->is('products*') || request()->is('warehouses*') || request()->is('inventory*') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-indigo-400' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-                                <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">Inventory</span>
-                            </div>
-                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-4 h-4 transition-transform duration-200" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    <div x-data="{ open: {{ request()->is('products*') || request()->is('warehouses*') || request()->is('inventory*') ? 'true' : 'false' }} }">
+                        <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
+                                class="nav-item w-full {{ request()->is('products*') || request()->is('warehouses*') || request()->is('inventory*') ? 'active' : '' }}"
+                                title="Inventory">
+                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                            </svg>
+                            <span x-show="sidebarOpen" class="whitespace-nowrap flex-1 text-left">Inventory</span>
+                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-3.5 h-3.5 transition-transform duration-200 nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
                         </button>
-                        <div x-show="open && sidebarOpen" x-collapse class="pl-12 pr-2 space-y-1">
-                            <a href="{{ url('/products') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('products*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Products</a>
-                            <a href="{{ url('/warehouses') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->routeIs('warehouses.index', 'warehouses.show') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">
-                                🏭 Warehouses (WMS)
-                            </a>
-
-                            <a href="{{ url('/warehouses/stock-take') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('warehouses/stock-take*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">
-                                📋 Stock Take
-                            </a>
-                            <a href="{{ url('/inventory/log') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('inventory/log*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Inventory Log</a>
-                            <a href="{{ url('/inventory/adjustments') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('inventory/adjustments*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Stock Adjustments</a>
+                        <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
+                            <a href="{{ url('/products') }}"       class="sub-nav-item {{ request()->is('products*') ? 'active' : '' }}">Products</a>
+                            <a href="{{ url('/warehouses') }}"     class="sub-nav-item {{ request()->routeIs('warehouses.index','warehouses.show') ? 'active' : '' }}">Warehouses (WMS)</a>
+                            <a href="{{ url('/warehouses/stock-take') }}" class="sub-nav-item {{ request()->is('warehouses/stock-take*') ? 'active' : '' }}">Stock Take</a>
+                            <a href="{{ url('/inventory/log') }}"  class="sub-nav-item {{ request()->is('inventory/log*') ? 'active' : '' }}">Inventory Log</a>
+                            <a href="{{ url('/inventory/adjustments') }}" class="sub-nav-item {{ request()->is('inventory/adjustments*') ? 'active' : '' }}">Stock Adjustments</a>
                         </div>
                     </div>
                     @endcan
 
-                    <!-- PROCUREMENT MODULE -->
+                    <!-- PROCUREMENT -->
                     @can('view suppliers')
-                    <div x-data="{ open: {{ request()->is('suppliers*') || request()->is('procurement*') ? 'true' : 'false' }} }" class="space-y-1">
-                        <button @click="open = !open; if(!sidebarOpen) sidebarOpen = true;" class="flex items-center justify-between w-full px-4 py-2 text-sm font-medium rounded-md group {{ request()->is('suppliers*') || request()->is('procurement*') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white' }}">
-                            <div class="flex items-center">
-                                <svg class="w-5 h-5 mr-3 {{ request()->is('suppliers*') || request()->is('procurement*') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-indigo-400' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                                <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">Procurement</span>
-                            </div>
-                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-4 h-4 transition-transform duration-200" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    <div x-data="{ open: {{ request()->is('suppliers*') || request()->is('procurement*') ? 'true' : 'false' }} }">
+                        <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
+                                class="nav-item w-full {{ request()->is('suppliers*') || request()->is('procurement*') ? 'active' : '' }}"
+                                title="Procurement">
+                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            </svg>
+                            <span x-show="sidebarOpen" class="whitespace-nowrap flex-1 text-left">Procurement</span>
+                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-3.5 h-3.5 transition-transform duration-200 nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
                         </button>
-                        <div x-show="open && sidebarOpen" x-collapse class="pl-12 pr-2 space-y-1">
-                            <a href="{{ url('/suppliers') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('suppliers*') && !request()->is('procurement/rfqs*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Suppliers</a>
-                            <a href="{{ url('/procurement/rfqs') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('procurement/rfqs*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Supplier RFQs</a>
-                            <a href="{{ url('/procurement/purchase-orders') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('procurement/purchase-orders*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Purchase Orders</a>
-                            <a href="{{ url('/procurement/grn') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('procurement/grn*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Goods Receipt (GRN)</a>
+                        <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
+                            <a href="{{ url('/suppliers') }}"                   class="sub-nav-item {{ request()->is('suppliers*') && !request()->is('procurement/rfqs*') ? 'active' : '' }}">Suppliers</a>
+                            <a href="{{ url('/procurement/rfqs') }}"            class="sub-nav-item {{ request()->is('procurement/rfqs*') ? 'active' : '' }}">Supplier RFQs</a>
+                            <a href="{{ url('/procurement/purchase-orders') }}" class="sub-nav-item {{ request()->is('procurement/purchase-orders*') ? 'active' : '' }}">Purchase Orders</a>
+                            <a href="{{ url('/procurement/grn') }}"             class="sub-nav-item {{ request()->is('procurement/grn*') ? 'active' : '' }}">Goods Receipt (GRN)</a>
                         </div>
                     </div>
                     @endcan
 
-                    <!-- SALES MODULE -->
+                    <!-- SALES -->
                     @can('view customers')
-                    <div x-data="{ open: {{ request()->is('customers*') || request()->is('sales*') ? 'true' : 'false' }} }" class="space-y-1">
-                        <button @click="open = !open; if(!sidebarOpen) sidebarOpen = true;" class="flex items-center justify-between w-full px-4 py-2 text-sm font-medium rounded-md group {{ request()->is('customers*') || request()->is('sales*') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white' }}">
-                            <div class="flex items-center">
-                                <svg class="w-5 h-5 mr-3 {{ request()->is('customers*') || request()->is('sales*') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-indigo-400' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-                                <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">Sales</span>
-                            </div>
-                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-4 h-4 transition-transform duration-200" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    <div x-data="{ open: {{ request()->is('customers*') || request()->is('sales*') ? 'true' : 'false' }} }">
+                        <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
+                                class="nav-item w-full {{ request()->is('customers*') || request()->is('sales*') ? 'active' : '' }}"
+                                title="Sales">
+                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                            <span x-show="sidebarOpen" class="whitespace-nowrap flex-1 text-left">Sales</span>
+                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-3.5 h-3.5 transition-transform duration-200 nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
                         </button>
-                        <div x-show="open && sidebarOpen" x-collapse class="pl-12 pr-2 space-y-1">
-                            <a href="{{ url('/customers') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('customers*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Customers</a>
-                            <a href="{{ url('/sales/quotations') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('sales/quotations*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Sales Quotations</a>
-                            <a href="{{ url('/sales/orders') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('sales/orders*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Sales Orders</a>
+                        <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
+                            <a href="{{ url('/customers') }}"         class="sub-nav-item {{ request()->is('customers*') ? 'active' : '' }}">Customers</a>
+                            <a href="{{ url('/sales/quotations') }}"  class="sub-nav-item {{ request()->is('sales/quotations*') ? 'active' : '' }}">Quotations</a>
+                            <a href="{{ url('/sales/orders') }}"      class="sub-nav-item {{ request()->is('sales/orders*') ? 'active' : '' }}">Sales Orders</a>
                             @can('view fulfillment')
-                            <a href="{{ url('/sales/fulfillment') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('sales/fulfillment*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Order Fulfillment</a>
+                            <a href="{{ url('/sales/fulfillment') }}" class="sub-nav-item {{ request()->is('sales/fulfillment*') ? 'active' : '' }}">Order Fulfillment</a>
                             @endcan
                             @can('view returns')
-                            <a href="{{ url('/sales/returns') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('sales/returns*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Returns (RMA)</a>
+                            <a href="{{ url('/sales/returns') }}"     class="sub-nav-item {{ request()->is('sales/returns*') ? 'active' : '' }}">Returns (RMA)</a>
                             @endcan
                         </div>
                     </div>
                     @endcan
 
-                    <!-- FLEET MANAGEMENT MODULE -->
+                    <!-- FLEET -->
                     @canany(['view vehicles', 'view drivers', 'view shipments'])
-                    <div x-data="{ open: {{ request()->is('logistics*') ? 'true' : 'false' }} }" class="space-y-1">
-                        <button @click="open = !open; if(!sidebarOpen) sidebarOpen = true;" class="flex items-center justify-between w-full px-4 py-2 text-sm font-medium rounded-md group {{ request()->is('logistics*') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white' }}">
-                            <div class="flex items-center">
-                                <svg class="w-5 h-5 mr-3 {{ request()->is('logistics*') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-indigo-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
-                                </svg>
-                                <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">Fleet</span>
-                            </div>
-                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-4 h-4 transition-transform duration-200" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    <div x-data="{ open: {{ request()->is('logistics*') ? 'true' : 'false' }} }">
+                        <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
+                                class="nav-item w-full {{ request()->is('logistics*') ? 'active' : '' }}"
+                                title="Fleet & Logistics">
+                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                            </svg>
+                            <span x-show="sidebarOpen" class="whitespace-nowrap flex-1 text-left">Fleet & Logistics</span>
+                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-3.5 h-3.5 transition-transform duration-200 nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
                         </button>
-                        <div x-show="open && sidebarOpen" x-collapse class="pl-12 pr-2 space-y-1">
-                            <a href="{{ url('/logistics/dispatch') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('logistics/dispatch*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Dispatch Board</a>
+                        <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
+                            <a href="{{ url('/logistics/dispatch') }}"  class="sub-nav-item {{ request()->is('logistics/dispatch*') ? 'active' : '' }}">Dispatch Board</a>
                             @can('view vehicles')
-                            <a href="{{ url('/logistics/vehicles') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('logistics/vehicles*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Vehicles</a>
+                            <a href="{{ url('/logistics/vehicles') }}"  class="sub-nav-item {{ request()->is('logistics/vehicles*') ? 'active' : '' }}">Vehicles</a>
                             @endcan
                             @can('view drivers')
-                            <a href="{{ url('/logistics/drivers') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('logistics/drivers*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Drivers</a>
+                            <a href="{{ url('/logistics/drivers') }}"   class="sub-nav-item {{ request()->is('logistics/drivers*') ? 'active' : '' }}">Drivers</a>
                             @endcan
                             @can('view shipments')
-                            <a href="{{ url('/logistics/shipments') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('logistics/shipments*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Shipments</a>
+                            <a href="{{ url('/logistics/shipments') }}" class="sub-nav-item {{ request()->is('logistics/shipments*') ? 'active' : '' }}">Shipments</a>
                             @endcan
                         </div>
                     </div>
                     @endcanany
 
-                    <!-- PROJECTS MODULE -->
-                    <div x-data="{ open: {{ request()->is('projects*') ? 'true' : 'false' }} }" class="space-y-1">
-                        <button @click="open = !open; if(!sidebarOpen) sidebarOpen = true;" class="flex items-center justify-between w-full px-4 py-2 text-sm font-medium rounded-md group {{ request()->is('projects*') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white' }}">
-                            <div class="flex items-center">
-                                <svg class="w-5 h-5 mr-3 {{ request()->is('projects*') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-indigo-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                                </svg>
-                                <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">Projects</span>
-                            </div>
-                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-4 h-4 transition-transform duration-200" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    <!-- PROJECTS -->
+                    <div x-data="{ open: {{ request()->is('projects*') ? 'true' : 'false' }} }">
+                        <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
+                                class="nav-item w-full {{ request()->is('projects*') ? 'active' : '' }}"
+                                title="Projects">
+                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                            </svg>
+                            <span x-show="sidebarOpen" class="whitespace-nowrap flex-1 text-left">Projects</span>
+                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-3.5 h-3.5 transition-transform duration-200 nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
                         </button>
-                        <div x-show="open && sidebarOpen" x-collapse class="pl-12 pr-2 space-y-1">
-                            <a href="{{ url('/projects') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->routeIs('projects.index', 'projects.show') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Project Directory</a>
+                        <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
+                            <a href="{{ url('/projects') }}" class="sub-nav-item {{ request()->routeIs('projects.index','projects.show') ? 'active' : '' }}">Project Directory</a>
                         </div>
                     </div>
 
-                    <!-- FINANCE MODULE -->
-                    <!-- Changed from the previous permission check to checking for any finance ability or making it visible -->
-                    <div x-data="{ open: {{ request()->is('finance*') ? 'true' : 'false' }} }" class="space-y-1">
-                        <button @click="open = !open; if(!sidebarOpen) sidebarOpen = true;" class="flex items-center justify-between w-full px-4 py-2 text-sm font-medium rounded-md group {{ request()->is('finance*') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white' }}">
-                            <div class="flex items-center">
-                                <svg class="w-5 h-5 mr-3 {{ request()->is('finance*') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-indigo-400' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">Finance</span>
-                            </div>
-                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-4 h-4 transition-transform duration-200" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    <!-- FINANCE SECTION -->
+                    <div x-show="sidebarOpen" class="nav-section-label mt-2">Finance</div>
+
+                    <div x-data="{ open: {{ request()->is('finance*') ? 'true' : 'false' }} }">
+                        <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
+                                class="nav-item w-full {{ request()->is('finance*') ? 'active' : '' }}"
+                                title="Finance">
+                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span x-show="sidebarOpen" class="whitespace-nowrap flex-1 text-left">Finance</span>
+                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-3.5 h-3.5 transition-transform duration-200 nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
                         </button>
-                        <div x-show="open && sidebarOpen" x-collapse class="pl-12 pr-2 space-y-1">
-                            <a href="{{ url('/finance/payables') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('finance/payables*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Accounts Payable</a>
-                            <a href="{{ url('/finance/receivables') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('finance/receivables*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Accounts Receivable</a>
-                            <a href="{{ url('/finance/invoices') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('finance/invoices*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Invoices</a>
-                            <a href="{{ url('/finance/payment-certificates') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('finance/payment-certificates*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Payment Certificates</a>
-                            <a href="{{ url('/finance/expenses') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('finance/expenses*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Purchase Expenses</a>
+                        <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
+                            <a href="{{ url('/finance/payables') }}"             class="sub-nav-item {{ request()->is('finance/payables*') ? 'active' : '' }}">Accounts Payable</a>
+                            <a href="{{ url('/finance/receivables') }}"          class="sub-nav-item {{ request()->is('finance/receivables*') ? 'active' : '' }}">Accounts Receivable</a>
+                            <a href="{{ url('/finance/invoices') }}"             class="sub-nav-item {{ request()->is('finance/invoices*') ? 'active' : '' }}">Invoices</a>
+                            <a href="{{ url('/finance/payment-certificates') }}" class="sub-nav-item {{ request()->is('finance/payment-certificates*') ? 'active' : '' }}">Payment Certificates</a>
+                            <a href="{{ url('/finance/expenses') }}"             class="sub-nav-item {{ request()->is('finance/expenses*') ? 'active' : '' }}">Purchase Expenses</a>
                         </div>
                     </div>
 
-                    <!-- SYSTEM SETTINGS -->
+                    <!-- ADMIN SECTION -->
                     @can('manage users')
-                    <div x-data="{ open: {{ request()->is('admin*') ? 'true' : 'false' }} }" class="space-y-1">
-                        <button @click="open = !open; if(!sidebarOpen) sidebarOpen = true;" class="flex items-center justify-between w-full px-4 py-2 text-sm font-medium rounded-md group {{ request()->is('admin*') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white' }}">
-                            <div class="flex items-center">
-                                <svg class="w-5 h-5 mr-3 {{ request()->is('admin*') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-indigo-400' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                                <span x-show="sidebarOpen" class="whitespace-nowrap transition-opacity duration-300">Settings</span>
-                            </div>
-                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-4 h-4 transition-transform duration-200" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    <div x-show="sidebarOpen" class="nav-section-label mt-2">Administration</div>
+                    <div x-data="{ open: {{ request()->is('admin*') ? 'true' : 'false' }} }">
+                        <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
+                                class="nav-item w-full {{ request()->is('admin*') ? 'active' : '' }}"
+                                title="Settings">
+                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                            <span x-show="sidebarOpen" class="whitespace-nowrap flex-1 text-left">Settings</span>
+                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-3.5 h-3.5 transition-transform duration-200 nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
                         </button>
-                        <div x-show="open && sidebarOpen" x-collapse class="pl-12 pr-2 space-y-1">
-                            <a href="{{ url('/admin/settings') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('admin/settings*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">General Settings</a>
-                            <a href="{{ url('/admin/users') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('admin/users*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Users</a>
-                            <a href="{{ url('/admin/roles') }}" class="block px-2 py-2 text-sm rounded-md {{ request()->is('admin/roles*') ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800' }}">Roles & Permissions</a>
+                        <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
+                            <a href="{{ url('/admin/settings') }}" class="sub-nav-item {{ request()->is('admin/settings*') ? 'active' : '' }}">General Settings</a>
+                            <a href="{{ url('/admin/users') }}"    class="sub-nav-item {{ request()->is('admin/users*') ? 'active' : '' }}">Users</a>
+                            <a href="{{ url('/admin/roles') }}"    class="sub-nav-item {{ request()->is('admin/roles*') ? 'active' : '' }}">Roles & Permissions</a>
                         </div>
                     </div>
                     @endcan
+
                 </nav>
 
-                <!-- User Profile / Logout -->
-                <div class="p-4 border-t border-gray-800" x-data="{ showUserMenu: false }">
+                <!-- User Section at Bottom -->
+                <div class="flex-shrink-0 p-3" style="border-top: 1px solid rgba(255,255,255,0.06);"
+                     x-data="{ showUserMenu: false }">
                     <div class="relative">
-                        <button @click="showUserMenu = !showUserMenu" @click.outside="showUserMenu = false" class="flex items-center w-full px-2 py-2 text-sm font-medium text-gray-300 rounded-md hover:bg-gray-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                            <div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold flex-shrink-0">
-                                {{ substr(auth()->user()->name ?? 'U', 0, 1) }}
+                        <button @click="showUserMenu = !showUserMenu" @click.outside="showUserMenu = false"
+                                class="flex items-center w-full gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors">
+                            <div class="user-avatar flex-shrink-0">
+                                {{ strtoupper(substr(auth()->user()->name ?? 'U', 0, 1)) }}
                             </div>
-                            <div class="ml-3 flex-1 min-w-0 text-left" x-show="sidebarOpen">
-                                <p class="text-sm font-medium text-white truncate">{{ auth()->user()->name ?? 'Guest' }}</p>
-                                <p class="text-xs text-gray-400 truncate">{{ auth()->user()->email ?? '' }}</p>
+                            <div class="flex-1 min-w-0 text-left" x-show="sidebarOpen">
+                                <p class="text-sm font-semibold text-white truncate leading-tight">{{ auth()->user()->name ?? 'Guest' }}</p>
+                                <p class="text-xs truncate mt-0.5" style="color: rgba(255,255,255,0.35);">{{ auth()->user()->email ?? '' }}</p>
                             </div>
-                            <svg x-show="sidebarOpen" class="w-4 h-4 ml-1 flex-shrink-0 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                            <svg x-show="sidebarOpen" class="w-3.5 h-3.5 flex-shrink-0" style="color: rgba(255,255,255,0.3);" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
                         </button>
-                        
-                        <div x-show="showUserMenu" x-transition class="absolute bottom-full left-0 w-full mb-2 bg-gray-800 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 py-1 z-50">
-                            <a href="{{ url('/profile') }}" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">Profile</a>
+
+                        <!-- Dropdown -->
+                        <div x-show="showUserMenu" x-transition
+                             class="absolute bottom-full left-0 w-52 mb-2 rounded-xl shadow-xl py-1 z-50"
+                             style="background: #1a1f35; border: 1px solid rgba(255,255,255,0.1);">
+                            <a href="{{ url('/profile') }}"
+                               class="flex items-center gap-2 px-4 py-2.5 text-sm transition-colors"
+                               style="color: rgba(255,255,255,0.65);"
+                               onmouseover="this.style.background='rgba(255,255,255,0.06)'; this.style.color='#fff'"
+                               onmouseout="this.style.background=''; this.style.color='rgba(255,255,255,0.65)'">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                </svg>
+                                Profile
+                            </a>
+                            <div style="border-top: 1px solid rgba(255,255,255,0.07); margin: 4px 0;"></div>
                             <form method="POST" action="{{ url('/logout') }}">
                                 @csrf
-                                <button type="submit" class="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">Log Out</button>
+                                <button type="submit"
+                                        class="flex items-center gap-2 w-full text-left px-4 py-2.5 text-sm transition-colors"
+                                        style="color: #f87171;"
+                                        onmouseover="this.style.background='rgba(248,113,113,0.1)'"
+                                        onmouseout="this.style.background=''">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                                    </svg>
+                                    Sign Out
+                                </button>
                             </form>
                         </div>
                     </div>
                 </div>
             </aside>
 
-            <!-- Main Content Area -->
-            <div class="flex-1 flex flex-col h-screen overflow-hidden">
-                <!-- Top Header for Mobile Menu Toggle & Title -->
-                <header class="bg-white shadow-sm flex items-center justify-between px-4 py-3 sm:px-6 lg:px-8 border-b border-gray-200">
-                    <div class="flex items-center">
-                        <button @click="sidebarOpen = !sidebarOpen" class="text-gray-500 hover:text-gray-700 focus:outline-none">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            <!-- ═══════════════════════════════════════
+                 MAIN AREA
+            ═══════════════════════════════════════ -->
+            <div class="flex-1 flex flex-col h-screen overflow-hidden transition-all duration-300"
+                 :style="sidebarOpen ? 'margin-left: 240px' : 'margin-left: 68px'">
+
+                <!-- Top Bar -->
+                <header class="topbar flex-shrink-0 flex items-center justify-between px-5 py-0 h-14">
+                    <div class="flex items-center gap-3">
+                        <!-- Sidebar Toggle -->
+                        <button @click="sidebarOpen = !sidebarOpen"
+                                class="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+                                style="color: #64748b;"
+                                onmouseover="this.style.background='#f1f5f9'; this.style.color='#1e293b'"
+                                onmouseout="this.style.background=''; this.style.color='#64748b'">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                            </svg>
                         </button>
+
+                        <!-- Page Title -->
                         @if (isset($header))
-                            <h1 class="ml-4 text-xl font-semibold text-gray-900 truncate">
-                                {{ $header }}
-                            </h1>
+                            <div>
+                                <h1 class="page-title">{{ $header }}</h1>
+                            </div>
                         @endif
                     </div>
+
+                    <!-- Right actions -->
+                    <div class="flex items-center gap-2">
+                        <!-- Live Dynamic Notifications Bell -->
+                        <livewire:layout.notifications-bell />
+
+                        <!-- User avatar chip -->
+                        <div class="flex items-center gap-2 pl-2" style="border-left: 1px solid #f1f5f9;">
+                            <div class="user-avatar" style="width:32px; height:32px; font-size:12px;">
+                                {{ strtoupper(substr(auth()->user()->name ?? 'U', 0, 1)) }}
+                            </div>
+                            <div class="hidden sm:block">
+                                <p class="text-sm font-semibold text-gray-800 leading-tight">{{ auth()->user()->name ?? 'Guest' }}</p>
+                                <p class="text-xs text-gray-400">{{ auth()->user()->getRoleNames()->first() ?? 'User' }}</p>
+                            </div>
+                        </div>
+                    </div>
                 </header>
+
                 <!-- Page Content -->
-                <main class="flex-1 overflow-y-auto bg-gray-50 p-4 sm:p-6 lg:p-8 relative">
+                <main class="flex-1 overflow-y-auto main-content p-5 lg:p-6">
                     {{ $slot }}
                 </main>
             </div>
-            
-            <!-- Mobile Sidebar Backdrop -->
-            <div x-show="sidebarOpen" class="fixed inset-0 z-40 bg-gray-900 bg-opacity-50 transition-opacity lg:hidden" @click="sidebarOpen = false" x-transition.opacity></div>
+
+            <!-- Mobile backdrop -->
+            <div x-show="sidebarOpen && isMobile"
+                 @click="sidebarOpen = false"
+                 class="fixed inset-0 bg-black/50 z-40 lg:hidden"
+                 x-transition.opacity>
+            </div>
 
         </div>
 
-        <!-- Leaflet JS for Maps -->
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+        <!-- Leaflet JS -->
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+                integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     </body>
 </html>

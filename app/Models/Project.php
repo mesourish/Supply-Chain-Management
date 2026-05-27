@@ -34,4 +34,14 @@ class Project extends Model
     {
         return $this->hasMany(ProjectMaterialRequest::class);
     }
+
+    public function expenses()
+    {
+        return $this->hasMany(Expense::class);
+    }
+
+    public function invoices()
+    {
+        return $this->hasMany(Invoice::class);
+    }
 }

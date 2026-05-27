@@ -9,6 +9,7 @@ class Expense extends Model
     protected $fillable = [
         'purchase_order_id',
         'supplier_id',
+        'project_id',
         'category',
         'amount',
         'expense_date',
@@ -25,5 +26,10 @@ class Expense extends Model
     public function supplier()
     {
         return $this->belongsTo(Supplier::class);
+    }
+
+    public function project()
+    {
+        return $this->belongsTo(Project::class);
     }
 }

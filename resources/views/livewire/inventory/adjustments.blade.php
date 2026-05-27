@@ -46,7 +46,7 @@ new class extends Component {
         $this->bin_id = '';
         $this->product_id = '';
         if ($value) {
-            $this->bins = WarehouseBin::where('warehouse_id', $value)->orderBy('full_label')->get();
+            $this->bins = WarehouseBin::where('warehouse_id', $value)->orderBy('bin_code')->get();
         } else {
             $this->bins = [];
         }
@@ -69,7 +69,7 @@ new class extends Component {
     {
         $this->to_bin_id = '';
         if ($value) {
-            $this->to_bins = WarehouseBin::where('warehouse_id', $value)->orderBy('full_label')->get();
+            $this->to_bins = WarehouseBin::where('warehouse_id', $value)->orderBy('bin_code')->get();
         } else {
             $this->to_bins = [];
         }
