@@ -62,7 +62,7 @@ $save = function () {
     AccountReceivable::updateOrCreate(['id' => $this->receivableId], $data);
 
     $this->resetInputFields();
-    session()->flash('message', $this->receivableId ? 'Receivable Updated Successfully.' : 'Receivable Created Successfully.');
+    $this->dispatch('toast', type: 'success', message:  $this->receivableId ? 'Receivable Updated Successfully.' : 'Receivable Created Successfully.');
 };
 
 $edit = function ($id) {
@@ -77,7 +77,7 @@ $edit = function ($id) {
 
 $delete = function ($id) {
     AccountReceivable::find($id)->delete();
-    session()->flash('message', 'Receivable Deleted Successfully.');
+    $this->dispatch('toast', type: 'success', message:  'Receivable Deleted Successfully.');
 };
 
 $resetInputFields = function () {
@@ -130,7 +130,7 @@ $logPayment = function () {
     }
 
     $this->paymentReceivableId = null;
-    session()->flash('message', 'Payment logged successfully.');
+    $this->dispatch('toast', type: 'success', message:  'Payment logged successfully.');
 };
 
 ?>
@@ -141,11 +141,7 @@ $logPayment = function () {
         <div class="p-6 text-gray-900">
             <h2 class="text-2xl font-semibold mb-4">{{ $isEditing ? 'Edit Receivable' : 'Create Manual Receivable' }}</h2>
 
-            @if (session()->has('message'))
-                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('message') }}</span>
-                </div>
-            @endif
+            
 
             <form wire:submit.prevent="save">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

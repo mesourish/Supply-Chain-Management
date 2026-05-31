@@ -1,6 +1,7 @@
 # SCM ERP (Supply Chain Management System)
 
-A robust, enterprise-grade Supply Chain Management (SCM) ERP built with **Laravel 11**, **Livewire Volt**, **Alpine.js**, and **Tailwind CSS**. This software provides an end-to-end operational backbone for B2B enterprises, seamlessly connecting Customer Relationship Management (CRM), Sales Quotations, Project Milestones, Procurement (RFQs), multi-zone Warehouse Bins, Fleet Logistics, and Financial General Ledgers.
+## ℹ️ About
+A robust, enterprise-grade Supply Chain Management (SCM) ERP built with **Laravel 11**, **Livewire Volt**, **Alpine.js**, and **Tailwind CSS**. This open-source software provides an end-to-end operational backbone for B2B enterprises, seamlessly connecting Customer Relationship Management (CRM), Sales Quotations, Project Milestones, Procurement (RFQs), multi-zone Warehouse Bins, Fleet Logistics, and Financial General Ledgers.
 
 ---
 
@@ -563,3 +564,11 @@ To maintain code integrity, the `main` branch is strictly **protected**. **You c
 
 ---
 *Built with ❤️ using Laravel & Livewire.*
+
+---
+
+## 📄 License & Open Source Agreement
+
+This project is licensed under the **MIT License**. 
+
+By using, distributing, or contributing to this software, you agree to the terms and conditions outlined in the [LICENSE](LICENSE) file. This software is provided "as is", without warranty of any kind, express or implied.

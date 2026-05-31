@@ -134,7 +134,7 @@ new class extends Component {
     {
         $bin = WarehouseBin::findOrFail($id);
         if ($bin->stockEntries()->where('quantity', '>', 0)->exists()) {
-            session()->flash('error', 'Cannot delete bin — it still has stock. Transfer stock first.');
+            $this->dispatch('toast', type: 'error', message:  'Cannot delete bin — it still has stock. Transfer stock first.');
             return;
         }
         $bin->delete();
@@ -219,7 +219,7 @@ new class extends Component {
             ->where('product_id', $this->txProductId)->first();
 
         if (!$fromEntry || $fromEntry->quantity < $this->txQty) {
-            session()->flash('error', 'Insufficient stock in source bin.');
+            $this->dispatch('toast', type: 'error', message:  'Insufficient stock in source bin.');
             return;
         }
 
@@ -518,7 +518,7 @@ new class extends Component {
     {
         $count = WarehouseBin::where('zone', $zone)->count();
         if ($count > 0) {
-            session()->flash('error', "Cannot delete zone '{$zone}' — it has {$count} bins. Remove the bins first.");
+            $this->dispatch('toast', type: 'error', message:  "Cannot delete zone '{$zone}' — it has {$count} bins. Remove the bins first.");
             return;
         }
         session()->flash('success', "Zone '{$zone}' removed.");
@@ -588,7 +588,7 @@ new class extends Component {
         $this->validate($rules);
 
         if (!$this->selectedWarehouseId) {
-            session()->flash('error', 'Select a warehouse first.');
+            $this->dispatch('toast', type: 'error', message:  'Select a warehouse first.');
             return;
         }
 
@@ -781,13 +781,7 @@ new class extends Component {
             {{ session('success') }}
         </div>
     @endif
-    @if (session()->has('error'))
-        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)"
-             class="fixed top-4 right-4 z-50 flex items-center gap-2 bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl text-sm font-medium">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-            {{ session('error') }}
-        </div>
-    @endif
+    
 
     {{-- ── Page Header ────────────────────────────────────────────── --}}
     <div class="bg-white border-b border-gray-200 px-6 py-4">
@@ -962,7 +956,7 @@ new class extends Component {
                                     style="{{ $activeZoneTab === $zone
                                         ? 'border-color:#6366f1;color:#6366f1;background:#eef2ff;'
                                         : 'border-color:transparent;color:#6c757d;' }}">
-                                Zone {{ $zone }}
+                                {{ stripos($zone, 'zone') !== false ? $zone : 'Zone ' . $zone }}
                             </button>
                         </li>
                         @endforeach
@@ -976,7 +970,7 @@ new class extends Component {
                 @if(empty($activeRacks) && $activeZoneTab)
                     <div class="text-center py-12 text-gray-400">
                         <i class="fas fa-inbox text-4xl mb-3"></i>
-                        <p>No racks in Zone {{ $activeZoneTab }}. Click <strong>Add New Rack</strong> to create one.</p>
+                        <p>No racks in {{ stripos($activeZoneTab, 'zone') !== false ? $activeZoneTab : 'Zone ' . $activeZoneTab }}. Click <strong>Add New Rack</strong> to create one.</p>
                     </div>
                 @elseif(empty($zoneTabs))
                     <div class="text-center py-12 text-gray-400">
@@ -1172,7 +1166,7 @@ new class extends Component {
                             <td class="px-4 py-3 font-medium">
                                 <span class="px-2 py-0.5 rounded text-sm font-bold"
                                       style="background:#e9d8fd;color:#6b21a8;">
-                                    Zone {{ $zone['name'] }}
+                                    {{ stripos($zone['name'], 'zone') !== false ? $zone['name'] : 'Zone ' . $zone['name'] }}
                                 </span>
                             </td>
                             <td class="px-4 py-3 text-center text-gray-600">{{ $zone['racks'] }}</td>
@@ -1212,7 +1206,7 @@ new class extends Component {
                     <select wire:model.live="filterZone" class="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500">
                         <option value="">All Zones</option>
                         @foreach($zones as $z)
-                            <option value="{{ $z }}">Zone {{ $z }}</option>
+                            <option value="{{ $z }}">{{ stripos($z, 'zone') !== false ? $z : 'Zone ' . $z }}</option>
                         @endforeach
                     </select>
                     <input wire:model.live="filterRack" placeholder="Filter by Rack (e.g. R1)"
@@ -1249,7 +1243,7 @@ new class extends Component {
                                         <div class="font-mono font-bold text-gray-700 text-base mb-1">{{ $bin->bin_code }}</div>
                                         @if($bin->zone)
                                             <div class="text-xs text-gray-500 font-medium">
-                                                Zone {{ $bin->zone }} › {{ $bin->rack }} › {{ $bin->shelf }}
+                                                {{ stripos($bin->zone, 'zone') !== false ? $bin->zone : 'Zone ' . $bin->zone }} › {{ $bin->rack }} › {{ $bin->shelf }}
                                             </div>
                                         @endif
                                     </td>
@@ -1373,7 +1367,7 @@ new class extends Component {
                                 <p class="text-2xl font-bold text-gray-800">{{ number_format($entry->quantity) }}</p>
                                 <p class="text-xs text-gray-400">{{ $entry->product->unit_of_measure }}</p>
                                 @if($entry->unit_cost)
-                                    <p class="text-xs text-green-600 font-medium">₹{{ number_format($entry->unit_cost * $entry->quantity, 0) }}</p>
+                                    <p class="text-xs text-green-600 font-medium">{{ setting('currency_symbol', '₹') }}{{ number_format($entry->unit_cost * $entry->quantity, 2) }}</p>
                                 @endif
                             </div>
                         </div>

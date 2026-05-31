@@ -40,4 +40,14 @@ class InventoryTransaction extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function reference()
+    {
+        return $this->morphTo('reference', 'reference_type', 'reference_id');
+    }
+
+    public function grn()
+    {
+        return $this->belongsTo(GoodsReceiptNote::class, 'reference_id');
+    }
 }

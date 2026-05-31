@@ -2,13 +2,22 @@
 
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
+use App\Http\Controllers\PdfExportController;
 
 Route::get('/', function () {
     return redirect()->route('login');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    // PDF Export Routes
+    Route::get('/pdf/invoice/{invoice}', [PdfExportController::class, 'invoice'])->name('pdf.invoice');
+    Route::get('/pdf/sales-order/{order}', [PdfExportController::class, 'salesOrder'])->name('pdf.salesOrder');
+    Route::get('/pdf/purchase-order/{order}', [PdfExportController::class, 'purchaseOrder'])->name('pdf.purchaseOrder');
+
     Volt::route('dashboard', 'pages.dashboard')->name('dashboard');
+
+    Volt::route('intelligence/forecasting', 'intelligence.forecasting')->name('intelligence.forecasting');
+
 
     // Admin & Users
     Volt::route('admin/roles', 'admin.roles')
@@ -26,6 +35,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('warehouses/{id}', 'warehouses.show')->name('warehouses.show');
     Volt::route('inventory/log', 'inventory.log')->name('inventory.log');
     Volt::route('inventory/adjustments', 'inventory.adjustments')->name('inventory.adjustments');
+    Volt::route('inventory/analytics', 'inventory.analytics')->name('inventory.analytics');
 
 
     // CRM Module
@@ -33,6 +43,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Procurement Module
     Volt::route('suppliers', 'suppliers.index')->name('suppliers.index');
+    Volt::route('suppliers/{supplier}', 'suppliers.show')->name('suppliers.show');
     Volt::route('procurement/rfqs', 'procurement.rfqs')->name('procurement.rfqs');
     Volt::route('procurement/purchase-orders', 'procurement.purchase-orders.index')
         ->name('purchase-orders.index');
@@ -50,9 +61,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('sales/returns', 'sales.returns.index')->name('returns.index');
     Volt::route('sales/returns/{id}', 'sales.returns.show')->name('returns.show');
 
-    // Projects Module
-    Volt::route('projects', 'projects.index')->name('projects.index');
-    Volt::route('projects/{project}', 'projects.show')->name('projects.show');
     // Logistics
     Volt::route('logistics/dispatch', 'logistics.dispatch')
         ->name('dispatch.index');
@@ -80,10 +88,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('finance.certificates')
         ->middleware('can:view receivables');
 
+    // Comprehensive Reports Module
+    Volt::route('/reports', 'reports.index')->name('reports.index');
+    Volt::route('/faq', 'faq.index')->name('faq.index');
+
     // Admin / Settings Module
     Volt::route('admin/settings', 'admin.settings.index')
-        ->name('admin.settings')
-        ->middleware('can:manage users'); // Or a generic admin check
+        ->name('admin.settings');
+        
+    Volt::route('admin/constants', 'admin.constants')
+        ->name('admin.constants')
+        ->middleware('can:view constants'); 
 });
 
 Route::view('profile', 'profile')

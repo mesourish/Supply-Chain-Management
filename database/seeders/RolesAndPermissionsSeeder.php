@@ -25,7 +25,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view purchase_orders', 'create purchase_orders', 'edit purchase_orders', 'delete purchase_orders', 'approve purchase_orders', 'receive purchase_orders',
             'view sales_orders', 'create sales_orders', 'edit sales_orders', 'delete sales_orders', 'fulfill sales_orders',
             'view inventory', 'edit inventory', 'view inventory log', 'create inventory adjustments',
-            'manage roles', 'manage users',
+            'manage roles', 'manage users', 'manage general_settings', 'manage localization_settings', 'view constants', 'create constants', 'edit constants', 'delete constants',
             'view vehicles', 'create vehicles', 'edit vehicles', 'delete vehicles',
             'view drivers', 'create drivers', 'edit drivers', 'delete drivers',
             'view shipments', 'create shipments', 'edit shipments', 'delete shipments',
@@ -35,10 +35,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'view receivables', 'create receivables', 'edit receivables',
             'view returns', 'create returns', 'edit returns',
             'view expenses', 'create expenses', 'edit expenses', 'delete expenses',
+            'view invoices', 'create invoices', 'edit invoices', 'delete invoices',
+            'view currencies', 'manage currencies',
             'view crm_leads', 'create crm_leads', 'edit crm_leads', 'delete crm_leads',
             'view quotations', 'create quotations', 'edit quotations', 'delete quotations',
             'view rfqs', 'create rfqs', 'edit rfqs', 'delete rfqs',
-            'view projects', 'create projects', 'edit projects', 'delete projects',
+            'view reports', 'manage reports',
         ];
 
         foreach ($permissions as $permission) {
@@ -82,6 +84,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'view payables', 'create payables', 'edit payables',
             'view receivables', 'create receivables', 'edit receivables',
             'view expenses', 'create expenses', 'edit expenses', 'delete expenses',
+            'view invoices', 'create invoices', 'edit invoices', 'delete invoices',
+            'view currencies', 'manage currencies',
             'view suppliers', 'view customers', 'view purchase_orders', 'view sales_orders'
         ]);
 

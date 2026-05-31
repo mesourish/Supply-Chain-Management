@@ -60,11 +60,12 @@ new class extends Component {
 
         $this->resetInputFields();
         $this->loadData();
-        session()->flash('message', $this->userId ? 'User Updated Successfully.' : 'User Created Successfully.');
+        $this->dispatch('toast', type: 'success', message:  $this->userId ? 'User Updated Successfully.' : 'User Created Successfully.');
     }
 
     public function edit($id)
     {
+        $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         if (!auth()->user()->can('manage users')) abort(403);
         $user = User::findOrFail($id);
         $this->userId = $id;
@@ -80,12 +81,12 @@ new class extends Component {
         if (!auth()->user()->can('manage users')) abort(403);
         $user = User::findOrFail($id);
         if ($user->id === auth()->id()) {
-            session()->flash('error', 'You cannot delete yourself.');
+            $this->dispatch('toast', type: 'error', message:  'You cannot delete yourself.');
             return;
         }
         $user->delete();
         $this->loadData();
-        session()->flash('message', 'User Deleted Successfully.');
+        $this->dispatch('toast', type: 'success', message:  'User Deleted Successfully.');
     }
 
     public function resetInputFields()
@@ -104,16 +105,8 @@ new class extends Component {
         <div class="p-6 text-gray-900">
             <h2 class="text-2xl font-semibold mb-4">{{ $isEditing ? 'Edit User' : 'Create New User' }}</h2>
 
-            @if (session()->has('message'))
-                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('message') }}</span>
-                </div>
-            @endif
-            @if (session()->has('error'))
-                <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('error') }}</span>
-                </div>
-            @endif
+            
+            
 
             <form wire:submit="save">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -23,6 +23,13 @@ class Product extends Model
         'reorder_level',
     ];
 
+    public function suppliers()
+    {
+        return $this->belongsToMany(Supplier::class, 'product_supplier')
+                    ->withPivot('price', 'supplier_sku')
+                    ->withTimestamps();
+    }
+
     public function inventoryTransactions()
     {
         return $this->hasMany(InventoryTransaction::class);

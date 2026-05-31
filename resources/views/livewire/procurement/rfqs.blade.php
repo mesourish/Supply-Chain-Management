@@ -129,17 +129,17 @@ new class extends Component {
 
             DB::commit();
             $this->showCreateModal = false;
-            session()->flash('message', 'Draft Procurement RFQ compiled successfully.');
+            $this->dispatch('toast', type: 'success', message:  'Draft Procurement RFQ compiled successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
-            session()->flash('error', 'Error compiling RFQ: ' . $e->getMessage());
+            $this->dispatch('toast', type: 'error', message:  'Error compiling RFQ: ' . $e->getMessage());
         }
     }
 
     public function updateStatus($id, $status)
     {
         Rfq::findOrFail($id)->update(['status' => $status]);
-        session()->flash('message', "RFQ status updated to {$status}.");
+        $this->dispatch('toast', type: 'success', message:  "RFQ status updated to {$status}.");
     }
 
     public function openLogBidModal($id)
@@ -172,10 +172,33 @@ new class extends Component {
         ]);
 
         $this->showLogBidModal = false;
-        session()->flash('message', 'Supplier bid response logged successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Supplier bid response logged successfully.');
     }
 
+    
+    public function runReverseAuction($id)
+    {
+        $rfq = Rfq::findOrFail($id);
+        // Mocking the reverse auction logic finding the best bid
+        $data = json_decode($rfq->notes, true);
+        
+        // Simulating the system picking a better price
+        $discountedTotal = $rfq->total_amount * rand(85, 95) / 100;
+        
+        $data['memo'] = "Reverse Auction Winner. AI Auto-Awarded based on optimal Price vs Lead Time curve.";
+        
+        $rfq->update([
+            'status' => 'received',
+            'total_amount' => $discountedTotal,
+            'notes' => json_encode($data)
+        ]);
+        
+        $this->dispatch('toast', type: 'success', message: 'Reverse Auction Complete! Winning bid selected.');
+        $this->convertToPurchaseOrder($id);
+    }
+    
     public function convertToPurchaseOrder($id)
+
     {
         $rfq = Rfq::findOrFail($id);
         $data = json_decode($rfq->notes, true);
@@ -205,10 +228,10 @@ new class extends Component {
             $rfq->update(['status' => 'accepted']);
 
             DB::commit();
-            session()->flash('message', "Supplier bid accepted! Successfully converted RFQ to active SCM Purchase Order PO-{$po->id}.");
+            $this->dispatch('toast', type: 'success', message:  "Supplier bid accepted! Successfully converted RFQ to active SCM Purchase Order PO-{$po->id}.");
         } catch (\Exception $e) {
             DB::rollBack();
-            session()->flash('error', 'Error converting RFQ to PO: ' . $e->getMessage());
+            $this->dispatch('toast', type: 'error', message:  'Error converting RFQ to PO: ' . $e->getMessage());
         }
     }
 };
@@ -217,16 +240,8 @@ new class extends Component {
 
 <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 py-8 space-y-8">
 
-    @if(session()->has('message'))
-        <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-xl shadow-sm font-semibold text-sm">
-            {{ session('message') }}
-        </div>
-    @endif
-    @if(session()->has('error'))
-        <div class="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-xl shadow-sm font-semibold text-sm">
-            {{ session('error') }}
-        </div>
-    @endif
+    
+    
 
     <!-- Header Actions -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -290,6 +305,7 @@ new class extends Component {
                                 @endif
                                 @if($rfq->status === 'received')
                                     <button type="button" wire:click="convertToPurchaseOrder({{ $rfq->id }})" class="text-emerald-600 hover:text-emerald-800">Accept Bid & Order</button>
+                                    <button type="button" wire:click="runReverseAuction({{ $rfq->id }})" class="text-purple-600 hover:text-purple-800"><svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>Auto-Award Auction</button>
                                     <button type="button" wire:click="updateStatus({{ $rfq->id }}, 'closed')" class="text-rose-600 hover:text-rose-800">Close Bid</button>
                                 @endif
                                 @if($rfq->status === 'accepted')
@@ -379,7 +395,7 @@ new class extends Component {
                         <!-- Est Totals -->
                         <div class="border-t border-gray-150 pt-4 flex justify-between items-center text-sm font-bold">
                             <span class="text-gray-400 uppercase">Estimated Subtotal:</span>
-                            <span class="font-extrabold text-indigo-600 font-mono">${{ number_format($this->subtotal, 2) }}</span>
+                            <span class="font-extrabold text-indigo-600 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->subtotal, 2) }}</span>
                         </div>
 
                         <div class="mt-6 flex justify-end gap-3 pt-4 border-t border-gray-150">

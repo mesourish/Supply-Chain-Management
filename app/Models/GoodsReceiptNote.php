@@ -16,6 +16,8 @@ class GoodsReceiptNote extends Model
         return $this->belongsTo(PurchaseOrder::class);
     }
 
+
+
     public function user()
     {
         return $this->belongsTo(User::class);

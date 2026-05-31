@@ -7,6 +7,7 @@ use App\Models\GoodsReceiptNote;
 use App\Models\InventoryTransaction;
 use App\Models\AccountPayable;
 use App\Models\WarehouseBin;
+use App\Models\BinProductStock;
 use Illuminate\Support\Facades\DB;
 
 state([
@@ -65,6 +66,12 @@ $receive = function (PurchaseOrder $po) {
     $this->showModal = true;
 };
 
+$closeModal = function () {
+    $this->showModal = false;
+    $this->selectedPo = null;
+    $this->clearValidation();
+};
+
 $confirmReceipt = function () {
     if (!auth()->user()->can('receive purchase_orders') && !auth()->user()->can('create grn')) abort(403);
     
@@ -92,7 +99,7 @@ $confirmReceipt = function () {
         }
         
         if (empty($itemsToReceive)) {
-            session()->flash('error', 'No items selected to receive.');
+            $this->dispatch('toast', type: 'error', message:  'No items selected to receive.');
             return;
         }
 
@@ -125,6 +132,15 @@ $confirmReceipt = function () {
                 'notes' => 'Received via GRN #' . $grn->id,
                 'user_id' => auth()->id(),
             ]);
+
+            // Update Physical Bin Stock
+            $binStock = BinProductStock::firstOrCreate(
+                ['warehouse_bin_id' => $this->bin_id, 'product_id' => $item->product_id],
+                ['quantity' => 0, 'unit_cost' => $item->unit_price]
+            );
+            $binStock->increment('quantity', $qty);
+            
+            // Optionally update unit_cost if needed (e.g. moving average), but for now we just log it.
             
             if ($item->received_quantity < $item->quantity) {
                 $allFullyReceived = false;
@@ -181,11 +197,7 @@ $confirmReceipt = function () {
                 </div>
             @endif
             
-            @if (session()->has('error'))
-                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
-                    {{ session('error') }}
-                </div>
-            @endif
+            
 
             <!-- Pending POs -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
@@ -258,7 +270,7 @@ $confirmReceipt = function () {
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">PO-#{{ $grn->purchase_order_id }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $grn->purchaseOrder->supplier->name ?? 'N/A' }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $grn->user->name ?? 'Unknown' }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $grn->created_at->format('M d, Y H:i') }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $grn->created_at->format(setting('date_format', 'Y-m-d') . ' ' . setting('time_format', 'H:i')) }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <button wire:click="viewGrn({{ $grn->id }})" class="text-indigo-600 hover:text-indigo-900">
                                                 <i class="fas fa-eye"></i> View
@@ -344,7 +356,7 @@ $confirmReceipt = function () {
                     </div>
 
                     <div class="mt-5 sm:mt-6 flex justify-end gap-3 border-t pt-4">
-                        <button type="button" @click="show = false" class="inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:text-sm">
+                        <button type="button" wire:click="closeModal" class="inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:text-sm">
                             Cancel
                         </button>
                         <button type="submit" class="inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:text-sm">
@@ -379,7 +391,7 @@ $confirmReceipt = function () {
                     </div>
                     <div>
                         <p><span class="font-medium text-gray-500">Received By:</span> {{ $viewGrnDetails->user->name ?? 'Unknown' }}</p>
-                        <p><span class="font-medium text-gray-500">Date:</span> {{ $viewGrnDetails->created_at->format('M d, Y H:i') }}</p>
+                        <p><span class="font-medium text-gray-500">Date:</span> {{ $viewGrnDetails->created_at->format(setting('date_format', 'Y-m-d') . ' ' . setting('time_format', 'H:i')) }}</p>
                     </div>
                     @if($viewGrnDetails->notes)
                     <div class="col-span-2 mt-2">
@@ -400,11 +412,16 @@ $confirmReceipt = function () {
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200 bg-white">
-                            @forelse(\App\Models\InventoryTransaction::where('reference_type', \App\Models\GoodsReceiptNote::class)->where('reference_id', $viewGrnDetails->id)->with(['product', 'toBin'])->get() as $tx)
+                            @forelse(\App\Models\InventoryTransaction::where('reference_type', \App\Models\GoodsReceiptNote::class)->where('reference_id', $viewGrnDetails->id)->with(['product', 'toBin.warehouse'])->get() as $tx)
                                 <tr>
                                     <td class="py-2 text-sm text-gray-900">{{ $tx->product->name ?? 'Unknown' }}</td>
                                     <td class="py-2 text-sm text-gray-500">{{ $tx->product->sku ?? 'Unknown' }}</td>
-                                    <td class="py-2 text-sm text-gray-500">{{ $tx->toBin->code ?? 'N/A' }}</td>
+                                    <td class="py-2 text-sm text-gray-500">
+                                        {{ $tx->toBin->full_label ?? 'N/A' }}
+                                        @if($tx->toBin && $tx->toBin->warehouse)
+                                            <span class="text-xs text-gray-400 block">{{ $tx->toBin->warehouse->name }}</span>
+                                        @endif
+                                    </td>
                                     <td class="py-2 text-sm font-medium text-green-600 text-right">+{{ $tx->quantity }}</td>
                                 </tr>
                             @empty

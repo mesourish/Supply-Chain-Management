@@ -9,13 +9,13 @@ class Expense extends Model
     protected $fillable = [
         'purchase_order_id',
         'supplier_id',
-        'project_id',
         'category',
         'amount',
         'expense_date',
         'reference_number',
         'notes',
         'attachment_path',
+        'tax_amount',
     ];
 
     public function purchaseOrder()
@@ -28,8 +28,5 @@ class Expense extends Model
         return $this->belongsTo(Supplier::class);
     }
 
-    public function project()
-    {
-        return $this->belongsTo(Project::class);
-    }
+
 }

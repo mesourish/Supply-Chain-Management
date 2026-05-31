@@ -22,4 +22,10 @@ class Rfq extends Model
     {
         return $this->belongsTo(Supplier::class);
     }
+
+    public function bids()
+    {
+        return $this->hasMany(RfqBid::class);
+    }
 }
+

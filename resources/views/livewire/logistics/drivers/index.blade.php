@@ -50,11 +50,12 @@ new class extends Component {
         }
 
         $this->resetInputFields();
-        session()->flash('message', $this->driverId ? 'Driver Updated Successfully.' : 'Driver Created Successfully.');
+        $this->dispatch('toast', type: 'success', message:  $this->driverId ? 'Driver Updated Successfully.' : 'Driver Created Successfully.');
     }
 
     public function edit($id)
     {
+        $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         if (!auth()->user()->can('edit drivers')) abort(403);
         $driver = Driver::findOrFail($id);
         $this->driverId = $id;
@@ -71,7 +72,7 @@ new class extends Component {
     {
         if (!auth()->user()->can('delete drivers')) abort(403);
         Driver::find($id)->delete();
-        session()->flash('message', 'Driver Deleted Successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Driver Deleted Successfully.');
     }
 
     public function resetInputFields()
@@ -103,11 +104,7 @@ new class extends Component {
         <div class="p-6 text-gray-900">
             <h2 class="text-2xl font-semibold mb-4">{{ $isEditing ? 'Edit Driver' : 'Create Driver' }}</h2>
 
-            @if (session()->has('message'))
-                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('message') }}</span>
-                </div>
-            @endif
+            
 
             <form wire:submit="save">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -10,5 +10,6 @@ class ReturnRequest extends Model
 
     public function salesOrder() { return $this->belongsTo(SalesOrder::class); }
     public function customer() { return $this->belongsTo(Customer::class); }
+
     public function items() { return $this->hasMany(ReturnRequestItem::class); }
 }

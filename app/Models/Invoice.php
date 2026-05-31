@@ -9,15 +9,34 @@ class Invoice extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['sales_order_id', 'project_id', 'status', 'amount'];
+    protected $fillable = [
+        'sales_order_id',
+        'customer_id',
+        'status',
+        'amount',
+        'tax_amount',
+        'gst_type',
+        'gst_percentage',
+        'shipping_amount',
+        'issue_date',
+        'due_date',
+        'description',
+    ];
+
+    public function items()
+    {
+        return $this->hasMany(InvoiceItem::class);
+    }
 
     public function salesOrder()
     {
         return $this->belongsTo(SalesOrder::class);
     }
 
-    public function project()
+    public function customer()
     {
-        return $this->belongsTo(Project::class);
+        return $this->belongsTo(Customer::class);
     }
+
+
 }

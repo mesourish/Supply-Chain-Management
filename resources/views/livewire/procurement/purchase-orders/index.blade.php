@@ -2,13 +2,17 @@
 
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
+use App\Models\SystemConstant;
 use Livewire\Volt\Component;
 use Livewire\WithPagination;
 
 new class extends Component {
     use WithPagination;
 
-    public $supplier_id, $status = 'draft', $total_amount = 0;
+    public $supplier_id, $status = 'draft';
+    public $subtotal = 0, $gst_type = 'exclusive', $gst_percentage = 0, $gst_amount = 0, $total_amount = 0;
+    public $remarks = '', $terms_and_conditions = '';
+    public $currency_code = 'USD', $exchange_rate = 1.0;
     public $isEditing = false;
     public $orderId = null;
 
@@ -17,7 +21,11 @@ new class extends Component {
         return [
             'supplier_id' => 'required|exists:suppliers,id',
             'status' => 'required|string',
-            'total_amount' => 'required|numeric|min:0',
+            'gst_type' => 'required|in:inclusive,exclusive',
+            'gst_percentage' => 'required|numeric|min:0',
+            'currency_code' => 'required|string|size:3',
+            'remarks' => 'nullable|string',
+            'terms_and_conditions' => 'nullable|string',
         ];
     }
 
@@ -25,49 +33,81 @@ new class extends Component {
     {
         $this->validate();
 
+        $supplier = Supplier::findOrFail($this->supplier_id);
+        if (!$supplier->contactPersons()->where('is_primary', true)->exists()) {
+            $this->addError('supplier_id', 'This supplier must have a primary contact person before a Purchase Order can be created.');
+            return;
+        }
+
         PurchaseOrder::updateOrCreate(
             ['id' => $this->orderId],
             [
                 'supplier_id' => $this->supplier_id,
                 'status' => $this->status,
-                'total_amount' => $this->total_amount,
+                'gst_type' => $this->gst_type,
+                'gst_percentage' => $this->gst_percentage,
+                'currency_code' => $this->currency_code,
+                'exchange_rate' => \App\Models\Currency::where('code', $this->currency_code)->value('exchange_rate') ?? 1.0,
+                'remarks' => $this->remarks,
+                'terms_and_conditions' => $this->terms_and_conditions,
             ]
         );
 
         $this->resetInputFields();
-        session()->flash('message', $this->orderId ? 'PO Updated Successfully.' : 'PO Created Successfully.');
+        $this->dispatch('toast', type: 'success', message:  $this->orderId ? 'PO Updated Successfully.' : 'PO Created Successfully.');
     }
 
     public function edit($id)
     {
+        $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         $order = PurchaseOrder::findOrFail($id);
         $this->orderId = $id;
         $this->supplier_id = $order->supplier_id;
         $this->status = $order->status;
-        $this->total_amount = $order->total_amount;
+        $this->gst_type = $order->gst_type;
+        $this->gst_percentage = $order->gst_percentage;
+        $this->currency_code = $order->currency_code ?? 'USD';
+        $this->exchange_rate = $order->exchange_rate ?? 1.0;
+        $this->remarks = $order->remarks;
+        $this->terms_and_conditions = $order->terms_and_conditions;
         $this->isEditing = true;
     }
 
     public function delete($id)
     {
         PurchaseOrder::find($id)->delete();
-        session()->flash('message', 'PO Deleted Successfully.');
+        $this->dispatch('toast', type: 'success', message:  'PO Deleted Successfully.');
     }
 
     public function resetInputFields()
     {
         $this->supplier_id = '';
         $this->status = 'draft';
-        $this->total_amount = 0;
+        $this->gst_type = setting('default_gst_type', 'exclusive');
+        $this->gst_percentage = setting('default_gst_percentage', 0);
+        $this->currency_code = 'USD';
+        $this->exchange_rate = 1.0;
+        $this->remarks = setting('default_po_remarks', '');
+        $this->terms_and_conditions = setting('default_po_terms', '');
         $this->orderId = null;
         $this->isEditing = false;
+    }
+
+    public function mount()
+    {
+        $this->gst_type = setting('default_gst_type', 'exclusive');
+        $this->gst_percentage = setting('default_gst_percentage', 0);
+        $this->remarks = setting('default_po_remarks', '');
+        $this->terms_and_conditions = setting('default_po_terms', '');
     }
 
     public function with()
     {
         return [
-            'orders' => PurchaseOrder::with('supplier')->latest()->paginate(10),
+            'orders' => PurchaseOrder::with(['supplier'])->latest()->paginate(10),
             'suppliers' => Supplier::where('is_active', true)->get(),
+            'currencies' => \App\Models\Currency::all(),
+            'gst_percentages' => SystemConstant::where('type', 'gst_percentage')->where('is_active', true)->orderBy('value')->get(),
         ];
     }
 }; ?>
@@ -77,11 +117,7 @@ new class extends Component {
         <div class="p-6 text-gray-900">
             <h2 class="text-2xl font-semibold mb-4">{{ $isEditing ? 'Edit Purchase Order' : 'Create Purchase Order' }}</h2>
 
-            @if (session()->has('message'))
-                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('message') }}</span>
-                </div>
-            @endif
+            
 
             <form wire:submit="save">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -95,6 +131,17 @@ new class extends Component {
                         </select>
                         <x-input-error :messages="$errors->get('supplier_id')" class="mt-2" />
                     </div>
+
+                    <div>
+                        <x-input-label for="currency_code" value="Currency" />
+                        <select wire:model="currency_code" id="currency_code" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm" required>
+                            @foreach($currencies as $currency)
+                                <option value="{{ $currency->code }}">{{ $currency->code }} - {{ $currency->name }}</option>
+                            @endforeach
+                        </select>
+                        <x-input-error :messages="$errors->get('currency_code')" class="mt-2" />
+                    </div>
+
                     <div>
                         <x-input-label for="status" value="Status" />
                         <select wire:model="status" id="status" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm" required>
@@ -107,9 +154,35 @@ new class extends Component {
                         <x-input-error :messages="$errors->get('status')" class="mt-2" />
                     </div>
                     <div>
-                        <x-input-label for="total_amount" value="Total Amount" />
-                        <x-text-input wire:model="total_amount" id="total_amount" type="number" step="0.01" class="mt-1 block w-full" required />
-                        <x-input-error :messages="$errors->get('total_amount')" class="mt-2" />
+                        <x-input-label for="gst_type" value="GST Type" />
+                        <select wire:model="gst_type" id="gst_type" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm" required>
+                            <option value="exclusive">Exclusive</option>
+                            <option value="inclusive">Inclusive</option>
+                        </select>
+                        <x-input-error :messages="$errors->get('gst_type')" class="mt-2" />
+                    </div>
+                    <div>
+                        <x-input-label for="gst_percentage" value="GST Percentage (%)" />
+                        <select wire:model="gst_percentage" id="gst_percentage" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm" required>
+                            <option value="0">0%</option>
+                            @foreach($gst_percentages as $gst)
+                                <option value="{{ $gst->value }}">{{ $gst->name }}</option>
+                            @endforeach
+                        </select>
+                        <x-input-error :messages="$errors->get('gst_percentage')" class="mt-2" />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <x-input-label for="remarks" value="Remarks" />
+                        <textarea wire:model="remarks" id="remarks" rows="2" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm"></textarea>
+                        <x-input-error :messages="$errors->get('remarks')" class="mt-2" />
+                    </div>
+                    <div>
+                        <x-input-label for="terms_and_conditions" value="Terms & Conditions" />
+                        <textarea wire:model="terms_and_conditions" id="terms_and_conditions" rows="2" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm"></textarea>
+                        <x-input-error :messages="$errors->get('terms_and_conditions')" class="mt-2" />
                     </div>
                 </div>
 
@@ -146,6 +219,15 @@ new class extends Component {
                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                                         {{ ucfirst($order->status) }}
                                     </span>
+                                    @if($order->approval_status === 'pending_approval')
+                                        <span class="ml-1 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-amber-100 text-amber-800">
+                                            Pending
+                                        </span>
+                                    @elseif($order->approval_status === 'rejected')
+                                        <span class="ml-1 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                            Rejected
+                                        </span>
+                                    @endif
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">{{ setting('currency_symbol', '$') }}{{ number_format($order->total_amount, 2) }}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

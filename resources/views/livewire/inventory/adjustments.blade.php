@@ -77,7 +77,7 @@ new class extends Component {
 
     public function updateProductsList()
     {
-        if ($this->type === 'add') {
+        if (in_array($this->type, ['add', 'supplier_to_warehouse'])) {
             // Can add any product to the bin
             $this->products = Product::orderBy('name')->get();
         } else {
@@ -119,7 +119,7 @@ new class extends Component {
                 'bin_id'       => 'required|exists:warehouse_bins,id',
                 'to_warehouse_id' => 'required|exists:warehouses,id',
                 'to_bin_id'    => 'required|exists:warehouse_bins,id|different:bin_id',
-                'type'         => 'required|in:add,remove,transfer',
+                'type'         => 'required|in:add,remove,transfer,supplier_to_warehouse,return_to_supplier,user_pickup',
                 'product_id'   => 'required|exists:products,id',
                 'quantity'     => 'required|numeric|min:0.01',
                 'notes'        => 'nullable|string|max:500',
@@ -130,7 +130,7 @@ new class extends Component {
             $this->validate([
                 'warehouse_id' => 'required|exists:warehouses,id',
                 'bin_id'       => 'required|exists:warehouse_bins,id',
-                'type'         => 'required|in:add,remove,transfer',
+                'type'         => 'required|in:add,remove,transfer,supplier_to_warehouse,return_to_supplier,user_pickup',
                 'product_id'   => 'required|exists:products,id',
                 'quantity'     => 'required|numeric|min:0.01',
                 'notes'        => 'nullable|string|max:500',
@@ -160,7 +160,7 @@ new class extends Component {
                     'product_id' => $this->product_id,
                     'from_bin_id' => $this->bin_id,
                     'to_bin_id' => null,
-                    'type' => 'adjustment_out',
+                    'type' => $this->type === 'remove' ? 'adjustment_out' : $this->type,
                     'quantity' => $this->quantity,
                     'reference_type' => 'manual',
                     'reference_id' => null,
@@ -230,7 +230,7 @@ new class extends Component {
                     'product_id' => $this->product_id,
                     'from_bin_id' => null,
                     'to_bin_id' => $this->bin_id,
-                    'type' => 'adjustment_in',
+                    'type' => $this->type === 'add' ? 'adjustment_in' : $this->type,
                     'quantity' => $this->quantity,
                     'reference_type' => 'manual',
                     'reference_id' => null,
@@ -245,7 +245,7 @@ new class extends Component {
 
         } catch (\Exception $e) {
             DB::rollBack();
-            session()->flash('error', 'Error recording adjustment: ' . $e->getMessage());
+            $this->dispatch('toast', type: 'error', message:  'Error recording adjustment: ' . $e->getMessage());
         }
     }
 
@@ -282,11 +282,7 @@ new class extends Component {
                 {{ session('success') }}
             </div>
         @endif
-        @if (session()->has('error'))
-            <div class="p-4 mb-6 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
-                {{ session('error') }}
-            </div>
-        @endif
+        
 
         <!-- Adjustments History Card -->
         <div class="bg-white shadow-sm border border-gray-100 rounded-xl overflow-hidden">
@@ -313,7 +309,7 @@ new class extends Component {
                                     {{ $txn->product?->sku ?? 'N/A' }} <span class="font-normal text-xs text-gray-400">({{ $txn->product?->name }})</span>
                                 </td>
                                 <td class="whitespace-nowrap px-3 py-4 text-sm">
-                                    @if($txn->type === 'adjustment_in')
+                                    @if(in_array($txn->type, ['adjustment_in', 'supplier_to_warehouse']))
                                         <span class="inline-flex rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-semibold border border-green-100 text-green-700">Addition</span>
                                     @elseif($txn->type === 'transfer')
                                         <span class="inline-flex rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold border border-indigo-100 text-indigo-700">Bin Transfer</span>
@@ -323,13 +319,15 @@ new class extends Component {
                                 </td>
                                 <td class="whitespace-nowrap px-3 py-4 text-sm font-bold text-gray-900">
                                     @php
-                                        $prefix = $txn->type === 'adjustment_in' ? '+' : ($txn->type === 'transfer' ? '⇅' : '-');
-                                        $color = $txn->type === 'adjustment_in' ? 'text-green-600' : ($txn->type === 'transfer' ? 'text-indigo-600' : 'text-rose-600');
+                                        $isAddition = in_array($txn->type, ['adjustment_in', 'supplier_to_warehouse']);
+                                        $isTransfer = $txn->type === 'transfer';
+                                        $prefix = $isAddition ? '+' : ($isTransfer ? '⇅' : '-');
+                                        $color = $isAddition ? 'text-green-600' : ($isTransfer ? 'text-indigo-600' : 'text-rose-600');
                                     @endphp
                                     <span class="{{ $color }}">{{ $prefix }} {{ $txn->quantity }}</span>
                                 </td>
                                 <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                                    @if($txn->type === 'adjustment_in')
+                                    @if(in_array($txn->type, ['adjustment_in', 'supplier_to_warehouse']))
                                         <span class="text-xs text-gray-400">To:</span> <span class="font-medium text-gray-700">{{ $txn->toBin ? $txn->toBin->full_label : '-' }}</span>
                                     @elseif($txn->type === 'transfer')
                                         <span class="font-medium text-gray-700">{{ $txn->fromBin ? $txn->fromBin->full_label : '-' }}</span> ➔ <span class="font-medium text-gray-700">{{ $txn->toBin ? $txn->toBin->full_label : '-' }}</span>
@@ -377,9 +375,12 @@ new class extends Component {
                         <div>
                             <label class="block text-sm font-medium text-gray-700">Adjustment Type *</label>
                             <select wire:model.live="type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                                <option value="add">Add Stock (+)</option>
-                                <option value="remove">Remove Stock (-)</option>
-                                <option value="transfer">Bin-to-Bin Transfer (⇅)</option>
+                                <option value="add">Add Stock (General +)</option>
+                                <option value="supplier_to_warehouse">Receive Stock (Supplier to Warehouse +)</option>
+                                <option value="remove">Remove Stock (General -)</option>
+                                <option value="return_to_supplier">Return Stock (Return to Supplier -)</option>
+                                <option value="user_pickup">User Pickup (Warehouse to User -)</option>
+                                <option value="transfer">Bin-to-Bin Transfer (Warehouse to Warehouse ⇅)</option>
                             </select>
                             @error('type') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
                         </div>

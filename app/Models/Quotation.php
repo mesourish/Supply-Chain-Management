@@ -21,6 +21,8 @@ class Quotation extends Model
         'notes',
     ];
 
+
+
     public function customer()
     {
         return $this->belongsTo(Customer::class);

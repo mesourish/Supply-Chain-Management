@@ -5,8 +5,11 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>{{ config('app.name', 'SCM ERP') }}</title>
-
+        <title>{{ setting('website_name', config('app.name', 'SCM ERP')) }}</title>
+        @if(setting('website_favicon'))
+            <link rel="icon" type="image/png" href="{{ setting('website_favicon') }}">
+        @endif
+        
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -156,6 +159,21 @@
 
             /* ── Page title ── */
             .page-title { font-size: 18px; font-weight: 700; color: #0f172a; line-height: 1.2; }
+
+            /* ── Print Styles ── */
+            @media print {
+                body, html { height: auto !important; overflow: visible !important; background: white !important; }
+                .sidebar, .topbar { display: none !important; }
+                [x-data] { height: auto !important; overflow: visible !important; display: block !important; }
+                .main-content { overflow: visible !important; height: auto !important; padding: 0 !important; margin: 0 !important; background: transparent !important; }
+                .flex-1 { margin-left: 0 !important; }
+                * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+                /* Modal Print Fix */
+                .no-print { display: none !important; }
+                .print-content-wrapper { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; z-index: 9999 !important; background: white !important; }
+                body > div:not(.fixed) { display: none !important; } /* Hide the main app wrapper when printing modal */
+            }
         </style>
     </head>
     <body class="antialiased font-sans" style="background:#f8fafc;">
@@ -335,24 +353,6 @@
                     </div>
                     @endcanany
 
-                    <!-- PROJECTS -->
-                    <div x-data="{ open: {{ request()->is('projects*') ? 'true' : 'false' }} }">
-                        <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
-                                class="nav-item w-full {{ request()->is('projects*') ? 'active' : '' }}"
-                                title="Projects">
-                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
-                            </svg>
-                            <span x-show="sidebarOpen" class="whitespace-nowrap flex-1 text-left">Projects</span>
-                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-3.5 h-3.5 transition-transform duration-200 nav-icon" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
-                            </svg>
-                        </button>
-                        <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
-                            <a href="{{ url('/projects') }}" class="sub-nav-item {{ request()->routeIs('projects.index','projects.show') ? 'active' : '' }}">Project Directory</a>
-                        </div>
-                    </div>
-
                     <!-- FINANCE SECTION -->
                     <div x-show="sidebarOpen" class="nav-section-label mt-2">Finance</div>
 
@@ -377,6 +377,27 @@
                         </div>
                     </div>
 
+                    <!-- REPORTS SECTION -->
+                    <div x-show="sidebarOpen" class="nav-section-label mt-2">Reports & Analytics</div>
+                    <div x-data="{ open: {{ request()->is('reports*') || request()->is('inventory/analytics*') ? 'true' : 'false' }} }">
+                        <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
+                                class="nav-item w-full {{ request()->is('reports*') || request()->is('inventory/analytics*') ? 'active' : '' }}"
+                                title="Reports">
+                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                            <span x-show="sidebarOpen" class="whitespace-nowrap flex-1 text-left">Reports</span>
+                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-3.5 h-3.5 transition-transform duration-200 nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
+                        </button>
+                        <div x-show="open" class="pl-12 py-2 space-y-1 bg-slate-900/50 relative sidebar-sub-nav">
+                            <div class="absolute left-[38px] top-0 bottom-0 w-px bg-slate-800"></div>
+                            <a href="{{ url('/reports') }}" class="sub-nav-item {{ request()->routeIs('reports.index') ? 'active' : '' }}">Comprehensive Reports</a>
+                            <a href="{{ url('/inventory/analytics') }}" class="sub-nav-item {{ request()->routeIs('inventory.analytics') ? 'active' : '' }}">Inventory Analytics</a>
+                        </div>
+                    </div>
+
                     <!-- ADMIN SECTION -->
                     @can('manage users')
                     <div x-show="sidebarOpen" class="nav-section-label mt-2">Administration</div>
@@ -394,12 +415,29 @@
                         </button>
                         <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
                             <a href="{{ url('/admin/settings') }}" class="sub-nav-item {{ request()->is('admin/settings*') ? 'active' : '' }}">General Settings</a>
+                            <a href="{{ url('/admin/constants') }}" class="sub-nav-item {{ request()->is('admin/constants*') ? 'active' : '' }}">System Constants</a>
                             <a href="{{ url('/admin/users') }}"    class="sub-nav-item {{ request()->is('admin/users*') ? 'active' : '' }}">Users</a>
                             <a href="{{ url('/admin/roles') }}"    class="sub-nav-item {{ request()->is('admin/roles*') ? 'active' : '' }}">Roles & Permissions</a>
                         </div>
                     </div>
                     @endcan
 
+                    
+                    <div class="pt-4 mt-4 border-t border-gray-800">
+                        <div class="px-4 mb-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Enterprise AI</div>
+
+                        <a href="{{ route('intelligence.forecasting') }}" class="group flex items-center px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 text-gray-300 hover:bg-gray-800 hover:text-white {{ request()->routeIs('intelligence.forecasting') ? 'bg-indigo-600/10 text-indigo-400 font-bold border border-indigo-500/20 shadow-sm' : '' }}">
+                            <svg class="mr-3 h-5 w-5 flex-shrink-0 transition-colors duration-200 {{ request()->routeIs('intelligence.forecasting') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-gray-300' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            AI Forecasting
+                        </a>
+                    </div>
+                    
+                    <div class="pt-4 mt-4 border-t border-gray-800">
+                        <a href="{{ route('faq.index') }}" class="group flex items-center px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 text-gray-300 hover:bg-gray-800 hover:text-white {{ request()->routeIs('faq.index') ? 'bg-indigo-600/10 text-indigo-400 font-bold border border-indigo-500/20 shadow-sm' : '' }}">
+                            <svg class="mr-3 h-5 w-5 flex-shrink-0 transition-colors duration-200 {{ request()->routeIs('faq.index') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-gray-300' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            Documentation & FAQ
+                        </a>
+                    </div>
                 </nav>
 
                 <!-- User Section at Bottom -->
@@ -517,5 +555,52 @@
         <!-- Leaflet JS -->
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
                 integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+        <!-- Global Toaster -->
+        <div x-data="{ toasts: [] }"
+             @toast.window="
+                let t = { id: Date.now(), type: $event.detail.type || 'success', message: $event.detail.message };
+                toasts.push(t);
+                setTimeout(() => { toasts = toasts.filter(toast => toast.id !== t.id) }, 4000);
+             "
+             class="fixed top-4 right-4 z-50 flex flex-col gap-2">
+            <template x-for="toast in toasts" :key="toast.id">
+                <div x-show="true" 
+                     x-transition:enter="transition ease-out duration-300"
+                     x-transition:enter-start="opacity-0 translate-x-10"
+                     x-transition:enter-end="opacity-100 translate-x-0"
+                     x-transition:leave="transition ease-in duration-200"
+                     x-transition:leave-start="opacity-100 translate-x-0"
+                     x-transition:leave-end="opacity-0 translate-x-10"
+                     class="flex items-center w-full max-w-xs p-4 rounded-lg shadow text-white"
+                     :class="{
+                         'bg-green-600': toast.type === 'success',
+                         'bg-red-600': toast.type === 'error',
+                         'bg-blue-600': toast.type === 'info'
+                     }"
+                     role="alert">
+                    <div class="ml-3 text-sm font-normal" x-text="toast.message"></div>
+                    <button @click="toasts = toasts.filter(t => t.id !== toast.id)" type="button" class="ml-auto -mx-1.5 -my-1.5 bg-transparent text-white hover:text-gray-200 rounded-lg focus:ring-2 focus:ring-gray-300 p-1.5 inline-flex h-8 w-8" aria-label="Close">
+                        <span class="sr-only">Close</span>
+                        <svg aria-hidden="true" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                    </button>
+                </div>
+            </template>
+        </div>
+
+        @if(session()->has('message'))
+            <script>
+                document.addEventListener('alpine:init', () => {
+                    window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'success', message: '{{ session('message') }}' }}));
+                });
+            </script>
+        @endif
+        @if(session()->has('error'))
+            <script>
+                document.addEventListener('alpine:init', () => {
+                    window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'error', message: '{{ session('error') }}' }}));
+                });
+            </script>
+        @endif
     </body>
 </html>

@@ -60,11 +60,12 @@ new class extends Component {
 
         $this->resetInputFields();
         $this->loadData();
-        session()->flash('message', $this->roleId ? 'Role Updated Successfully.' : 'Role Created Successfully.');
+        $this->dispatch('toast', type: 'success', message:  $this->roleId ? 'Role Updated Successfully.' : 'Role Created Successfully.');
     }
 
     public function edit($id)
     {
+        $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         if (!auth()->user()->can('manage roles')) abort(403);
         $role = Role::findById($id);
         $this->roleId = $id;
@@ -78,12 +79,12 @@ new class extends Component {
         if (!auth()->user()->can('manage roles')) abort(403);
         $role = Role::findById($id);
         if ($role->name === 'Super Admin') {
-            session()->flash('error', 'Cannot delete Super Admin role.');
+            $this->dispatch('toast', type: 'error', message:  'Cannot delete Super Admin role.');
             return;
         }
         $role->delete();
         $this->loadData();
-        session()->flash('message', 'Role Deleted Successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Role Deleted Successfully.');
     }
 
     public function resetInputFields()
@@ -100,16 +101,8 @@ new class extends Component {
         <div class="p-6 text-gray-900">
             <h2 class="text-2xl font-semibold mb-4">{{ $isEditing ? 'Edit Role & Permissions' : 'Create New Role' }}</h2>
 
-            @if (session()->has('message'))
-                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('message') }}</span>
-                </div>
-            @endif
-            @if (session()->has('error'))
-                <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('error') }}</span>
-                </div>
-            @endif
+            
+            
 
             <form wire:submit="save">
                 <div class="mb-4">
@@ -119,16 +112,28 @@ new class extends Component {
                 </div>
 
                 <h3 class="text-lg font-medium text-gray-900 mt-6 mb-3">Assign Permissions</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 bg-gray-50 p-4 rounded-md border border-gray-200">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     @foreach($permissions as $module => $perms)
-                        <div class="space-y-2">
-                            <h4 class="font-semibold text-indigo-700 border-b border-indigo-200 pb-1 mb-2">{{ $module }}</h4>
-                            @foreach($perms as $permission)
-                                <label class="flex items-center space-x-2">
-                                    <input type="checkbox" wire:model="selectedPermissions" value="{{ $permission->name }}" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
-                                    <span class="text-sm text-gray-700 capitalize">{{ explode(' ', $permission->name)[0] }}</span>
-                                </label>
-                            @endforeach
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow duration-200">
+                            <div class="bg-slate-50 px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                                <h4 class="font-bold text-slate-800 capitalize flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                                    {{ str_replace('_', ' ', $module) }}
+                                </h4>
+                            </div>
+                            <div class="p-4 space-y-3">
+                                @foreach($perms as $permission)
+                                    <label class="flex items-center justify-between cursor-pointer group">
+                                        <span class="text-sm font-medium text-slate-600 group-hover:text-indigo-600 transition-colors capitalize">
+                                            {{ explode(' ', $permission->name)[0] }}
+                                        </span>
+                                        <div class="relative inline-flex items-center">
+                                            <input type="checkbox" wire:model="selectedPermissions" value="{{ $permission->name }}" class="sr-only peer">
+                                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                                        </div>
+                                    </label>
+                                @endforeach
+                            </div>
                         </div>
                     @endforeach
                 </div>

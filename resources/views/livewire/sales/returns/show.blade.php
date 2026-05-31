@@ -57,14 +57,23 @@ $resolveRMA = function () {
             // 1. Process Inventory
             if ($item->condition === 'good') {
                 $product = $item->product;
-                $product->quantity += $item->quantity;
-                $product->save();
+                
+                // Get a default bin to restock to (or create logic to select bin)
+                $defaultBin = \App\Models\WarehouseBin::first();
+                $binId = $defaultBin ? $defaultBin->id : 1;
+
+                $stock = \App\Models\BinProductStock::firstOrCreate(
+                    ['warehouse_bin_id' => $binId, 'product_id' => $product->id],
+                    ['quantity' => 0]
+                );
+                $stock->increment('quantity', $item->quantity);
 
                 InventoryTransaction::create([
                     'product_id' => $product->id,
+                    'to_bin_id' => $binId,
                     'type' => 'adjustment',
                     'quantity' => $item->quantity,
-                    'reference_type' => 'return',
+                    'reference_type' => 'App\Models\ReturnRequest',
                     'reference_id' => $this->rma->id,
                     'notes' => 'Returned item in good condition',
                     'user_id' => auth()->id(),

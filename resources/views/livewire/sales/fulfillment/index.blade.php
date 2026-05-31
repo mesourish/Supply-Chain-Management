@@ -44,6 +44,28 @@ $loadData = function () {
 $fulfill = function (SalesOrder $so) {
     if (!auth()->user()->can('fulfill sales_orders')) abort(403);
     $this->selectedSo = $so;
+    
+    $validBins = collect();
+    $allBins = WarehouseBin::with('warehouse')->get();
+    
+    foreach ($allBins as $bin) {
+        $canFulfill = true;
+        foreach ($so->items as $item) {
+            $stock = \App\Models\BinProductStock::where('warehouse_bin_id', $bin->id)
+                ->where('product_id', $item->product_id)
+                ->first();
+                
+            if (!$stock || $stock->quantity < $item->quantity) {
+                $canFulfill = false;
+                break;
+            }
+        }
+        if ($canFulfill) {
+            $validBins->push($bin);
+        }
+    }
+    
+    $this->bins = $validBins;
     $this->bin_id = $this->bins->first()->id ?? null;
     $this->showModal = true;
 };
@@ -67,8 +89,16 @@ $confirmFulfillment = function () {
         $so = SalesOrder::find($this->selectedSo->id);
         $so->update(['status' => 'shipped']);
 
-        // 2. Create Inventory Transactions (OUT)
+        // 2. Create Inventory Transactions (OUT) and deduct physical stock
         foreach ($so->items as $item) {
+            $binStock = \App\Models\BinProductStock::where('warehouse_bin_id', $this->bin_id)
+                ->where('product_id', $item->product_id)
+                ->first();
+            if ($binStock) {
+                $binStock->quantity -= $item->quantity;
+                $binStock->save();
+            }
+
             InventoryTransaction::create([
                 'product_id' => $item->product_id,
                 'from_bin_id' => $this->bin_id,
@@ -87,6 +117,7 @@ $confirmFulfillment = function () {
             'sales_order_id' => $so->id,
             'status' => 'issued',
             'amount' => $so->total_amount,
+
         ]);
 
         // 4. Create Account Receivable
@@ -189,13 +220,10 @@ $confirmFulfillment = function () {
                                     <tr>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">INV-#{{ $invoice->id }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            @if($invoice->salesOrder && $invoice->salesOrder->customer)
-                                                <a href="{{ route('customers.show', $invoice->salesOrder->customer->id) }}" class="text-indigo-600 hover:underline">{{ $invoice->salesOrder->customer->name }}</a>
-                                            @else
-                                                N/A
-                                            @endif
+                                            SO-#{{ $invoice->sales_order_id }}
                                         </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $invoice->created_at->format('M d, Y H:i') }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ setting('currency_symbol', '$') }}{{ number_format($invoice->amount, 2) }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $invoice->created_at->format(setting('date_format', 'Y-m-d') . ' ' . setting('time_format', 'H:i')) }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <button wire:click="viewInvoice({{ $invoice->id }})" class="text-indigo-600 hover:text-indigo-900">View</button>
                                         </td>
@@ -240,9 +268,11 @@ $confirmFulfillment = function () {
                         <label class="block text-sm font-medium text-gray-700">Pick from Warehouse Bin</label>
                         <select wire:model="bin_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                             <option value="">Select a bin...</option>
-                            @foreach($bins as $bin)
+                            @forelse($bins as $bin)
                                 <option value="{{ $bin->id }}">{{ $bin->warehouse->name }} - {{ $bin->full_label }}</option>
-                            @endforeach
+                            @empty
+                                <option value="" disabled>No bins have sufficient stock for all items.</option>
+                            @endforelse
                         </select>
                         <p class="mt-1 text-xs text-gray-500">This will deduct the stock from the selected bin.</p>
                         @error('bin_id') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
@@ -287,7 +317,7 @@ $confirmFulfillment = function () {
                     <div class="text-right">
                         <h4 class="font-semibold text-gray-500 uppercase text-xs tracking-wider mb-2">Invoice Details</h4>
                         <p><span class="text-gray-500 mr-2">Status:</span> <span class="font-bold text-indigo-600 uppercase">{{ $selectedInvoice->status }}</span></p>
-                        <p><span class="text-gray-500 mr-2">Date:</span> {{ $selectedInvoice->created_at->format('M d, Y') }}</p>
+                        <p><span class="text-gray-500 mr-2">Date:</span> {{ $selectedInvoice->created_at->format(setting('date_format', 'Y-m-d')) }}</p>
                         <p><span class="text-gray-500 mr-2">Reference SO:</span> SO-#{{ $selectedInvoice->sales_order_id }}</p>
                     </div>
                 </div>

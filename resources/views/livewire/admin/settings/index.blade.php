@@ -1,7 +1,8 @@
 
 <?php
 
-use function Livewire\Volt\{state, mount, usesFileUploads};
+use function Livewire\Volt\{state, mount, usesFileUploads, with};
+use App\Models\SystemConstant;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -12,6 +13,7 @@ state([
     'showClearDataConfirm' => false,
     'website_name'      => '',
     'website_logo'      => null,
+    'website_favicon'   => null,
     'time_format'       => 'H:i',
     'date_format'       => 'Y-m-d',
     'timezone'          => 'UTC',
@@ -21,10 +23,20 @@ state([
     'map_center_latitude' => '25.2048',
     'map_center_longitude' => '55.2708',
     'map_zoom_level'    => '10',
+    'default_gst_percentage' => '18',
+    'default_gst_type' => 'exclusive',
+    'default_po_remarks' => '',
+    'default_po_terms' => '',
 ]);
 
 mount(function () {
-    if (!auth()->user()->can('manage users') && !auth()->user()->hasRole('Super Admin')) abort(403);
+    if (!auth()->user()->hasRole('Super Admin') && 
+        !auth()->user()->can('manage general_settings') &&
+        !auth()->user()->can('manage localization_settings')
+    ) {
+        abort(403);
+    }
+    
     $this->currency_symbol     = setting('currency_symbol', '$');
     $this->website_name        = setting('website_name', 'SCM ERP');
     $this->time_format         = setting('time_format', 'H:i');
@@ -36,113 +48,73 @@ mount(function () {
     $this->map_center_latitude = setting('map_center_latitude', '25.2048');
     $this->map_center_longitude = setting('map_center_longitude', '55.2708');
     $this->map_zoom_level      = setting('map_zoom_level', '10');
+    $this->default_gst_percentage = setting('default_gst_percentage', '18');
+    $this->default_gst_type       = setting('default_gst_type', 'exclusive');
+    $this->default_po_remarks     = setting('default_po_remarks', '');
+    $this->default_po_terms       = setting('default_po_terms', '');
 });
 
+with(fn () => [
+    'gst_percentages' => SystemConstant::where('type', 'gst_percentage')->where('is_active', true)->orderBy('value')->get(),
+]);
+
 $saveSettings = function () {
-    if (!auth()->user()->can('manage users') && !auth()->user()->hasRole('Super Admin')) abort(403);
+    $user = auth()->user();
+    $isSuper = $user->hasRole('Super Admin');
 
-    // Validate timezone is a real PHP timezone identifier
-    $tz = $this->timezone;
-    if (!in_array($tz, timezone_identifiers_list(), true)) {
-        $tz = 'UTC';
-        $this->timezone = 'UTC';
+    if ($isSuper || $user->can('manage general_settings')) {
+        set_setting('website_name',      $this->website_name);
+        set_setting('company_location',  $this->company_location);
+        if ($this->website_logo) {
+            $path = $this->website_logo->store('logos', 'public');
+            set_setting('website_logo', '/storage/' . $path);
+        }
+        if ($this->website_favicon) {
+            $path = $this->website_favicon->store('logos', 'public');
+            set_setting('website_favicon', '/storage/' . $path);
+        }
     }
 
-    set_setting('currency_symbol',   $this->currency_symbol);
-    set_setting('website_name',      $this->website_name);
-    set_setting('time_format',       $this->time_format);
-    set_setting('date_format',       $this->date_format);
-    set_setting('timezone',          $tz);
-    set_setting('company_location',  $this->company_location);
-    set_setting('invoice_prefix',    $this->invoice_prefix);
-    set_setting('sales_order_prefix',$this->sales_order_prefix);
-    set_setting('map_center_latitude',$this->map_center_latitude);
-    set_setting('map_center_longitude',$this->map_center_longitude);
-    set_setting('map_zoom_level',    $this->map_zoom_level);
-
-    // Apply immediately to the current request
-    config(['app.timezone' => $tz]);
-    date_default_timezone_set($tz);
-    // Carbon automatically picks up PHP's native timezone — no separate call needed
-
-    if ($this->website_logo) {
-        $path = $this->website_logo->store('logos', 'public');
-        set_setting('website_logo', '/storage/' . $path);
+    if ($isSuper || $user->can('manage localization_settings')) {
+        // Validate timezone
+        $tz = $this->timezone;
+        if (!in_array($tz, timezone_identifiers_list(), true)) {
+            $tz = 'UTC';
+            $this->timezone = 'UTC';
+        }
+        set_setting('currency_symbol',   $this->currency_symbol);
+        set_setting('time_format',       $this->time_format);
+        set_setting('date_format',       $this->date_format);
+        set_setting('timezone',          $tz);
+        
+        config(['app.timezone' => $tz]);
+        date_default_timezone_set($tz);
     }
 
-    session()->flash('message', 'Settings updated successfully. Timezone is now ' . $tz . '.');
+    if ($isSuper || $user->can('manage general_settings')) {
+        set_setting('invoice_prefix',    $this->invoice_prefix);
+        set_setting('sales_order_prefix',$this->sales_order_prefix);
+        set_setting('default_gst_percentage', $this->default_gst_percentage);
+        set_setting('default_gst_type',       $this->default_gst_type);
+        set_setting('default_po_remarks',     $this->default_po_remarks);
+        set_setting('default_po_terms',       $this->default_po_terms);
+        set_setting('map_center_latitude',$this->map_center_latitude);
+        set_setting('map_center_longitude',$this->map_center_longitude);
+        set_setting('map_zoom_level',    $this->map_zoom_level);
+    }
+
+    $this->dispatch('toast', type: 'success', message:  'Settings updated successfully.');
 };
 
 $clearData = function () {
     if (!auth()->user()->hasRole('Super Admin')) abort(403, 'Only Super Admin can clear data.');
 
-    DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+    // Call the dedicated artisan command and force it
+    \Illuminate\Support\Facades\Artisan::call('erp:clear-data', [
+        '--force' => true,
+    ]);
 
-    // ─── LEVEL 3: Deepest children (leaf rows with no further dependants) ───
-    $tables = [
-        // CRM Module
-        'crm_activities',           // child of crm_leads
-
-        // Quotation Module
-        'quotation_items',          // child of quotations
-
-        // Project Module
-        'project_material_requests',// child of project_milestones & projects
-        'project_milestones',       // child of projects
-
-        // Procurement Module
-        'purchase_order_items',     // child of purchase_orders
-        'goods_receipt_notes',      // child of purchase_orders
-
-        // Sales Module
-        'sales_order_items',        // child of sales_orders
-        'return_request_items',     // child of return_requests
-        'return_requests',          // child of sales_orders / customers
-        'shipments',                // child of sales_orders / drivers / vehicles
-
-        // Finance Module
-        'payment_logs',             // child of account_payables / account_receivables
-        'account_payables',         // child of purchase_orders / suppliers
-        'account_receivables',      // child of sales_orders / customers
-        'invoices',                 // child of sales_orders / customers
-        'expenses',                 // child of purchase_orders (optional FK)
-
-        // Inventory Module
-        'bin_product_stock',        // child of warehouse_bins / products
-        'bin_transfers',            // child of warehouse_bins / products
-        'inventory_transactions',   // child of warehouse_bins / products
-        'stock_take_items',         // child of stock_takes
-        'stock_takes',              // child of warehouses
-
-        // RFQ Module
-        'rfqs',                     // child of suppliers
-
-        // ─── LEVEL 2: Mid-tier parents ───────────────────────────────────
-        'quotations',               // child of customers
-        'projects',                 // child of customers / quotations
-        'crm_leads',                // standalone CRM entity
-        'sales_orders',             // child of customers
-        'purchase_orders',          // child of suppliers
-        'warehouse_bins',           // child of warehouses
-
-        // ─── LEVEL 1: Root parents ───────────────────────────────────────
-        'customers',
-        'suppliers',
-        'products',
-        'drivers',
-        'vehicles',
-        'warehouses',
-    ];
-
-    foreach ($tables as $table) {
-        if (Schema::hasTable($table)) {
-            DB::table($table)->truncate();
-        }
-    }
-
-    DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-
-    session()->flash('danger_message', 'All operational ERP data has been permanently cleared. Modules wiped: CRM, Quotations, RFQs, Projects, Sales Orders, Purchase Orders, Inventory, Warehouses, Finance (AP/AR/Invoices/Payments), Logistics, Stock Takes.');
+    session()->flash('danger_message', 'All operational ERP data (including database records and uploaded files) has been permanently cleared. System settings, users, and roles have been preserved.');
     $this->showClearDataConfirm = false;
 };
 
@@ -158,11 +130,7 @@ $clearData = function () {
     <div class="py-12">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
             
-            @if (session()->has('message'))
-                <div class="p-4 mb-4 text-sm text-green-800 rounded-lg bg-green-50" role="alert">
-                    {{ session('message') }}
-                </div>
-            @endif
+            
 
             @if (session()->has('danger_message'))
                 <div class="p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50" role="alert">
@@ -170,32 +138,38 @@ $clearData = function () {
                 </div>
             @endif
 
-            <!-- General Settings -->
-            <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
-                <div class="max-w-3xl">
+            <!-- Settings Tabs -->
+            <div x-data="{ tab: '{{ auth()->user()->hasRole('Super Admin') || auth()->user()->can('manage general_settings') ? 'general' : (auth()->user()->can('manage localization_settings') ? 'localization' : 'procurement') }}' }" class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
+                <div class="max-w-4xl">
                     <section>
-                        <header>
-                            <h2 class="text-lg font-medium text-gray-900">
-                                {{ __('General Configuration') }}
-                            </h2>
-                            <p class="mt-1 text-sm text-gray-600">
-                                {{ __("Update your system's global settings and basic info.") }}
-                            </p>
+                        <header class="flex border-b border-gray-200 mb-6">
+                            @if(auth()->user()->hasRole('Super Admin') || auth()->user()->can('manage general_settings'))
+                            <button @click="tab = 'general'" :class="{ 'border-indigo-500 text-indigo-600': tab === 'general', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': tab !== 'general' }" class="whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm">
+                                General Info
+                            </button>
+                            @endif
+                            
+                            @if(auth()->user()->hasRole('Super Admin') || auth()->user()->can('manage localization_settings'))
+                            <button @click="tab = 'localization'" :class="{ 'border-indigo-500 text-indigo-600': tab === 'localization', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': tab !== 'localization' }" class="whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm">
+                                Localization
+                            </button>
+                            @endif
+                            
+                            @if(auth()->user()->hasRole('Super Admin') || auth()->user()->can('manage general_settings'))
+                            <button @click="tab = 'procurement'" :class="{ 'border-indigo-500 text-indigo-600': tab === 'procurement', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': tab !== 'procurement' }" class="whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm">
+                                System & Procurement
+                            </button>
+                            @endif
                         </header>
 
-                        <form wire:submit="saveSettings" class="mt-6 space-y-6">
+                        <form wire:submit="saveSettings" class="space-y-6">
                             
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            @if(auth()->user()->hasRole('Super Admin') || auth()->user()->can('manage general_settings'))
+                            <div x-show="tab === 'general'" class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <!-- Website Name -->
                                 <div>
                                     <label for="website_name" class="block text-sm font-medium text-gray-700">Website/App Name</label>
                                     <input wire:model="website_name" id="website_name" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
-                                </div>
-
-                                <!-- Currency Symbol -->
-                                <div>
-                                    <label for="currency_symbol" class="block text-sm font-medium text-gray-700">Currency Symbol</label>
-                                    <input wire:model="currency_symbol" id="currency_symbol" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="$" required />
                                 </div>
 
                                 <!-- Website Logo -->
@@ -210,10 +184,32 @@ $clearData = function () {
                                     @endif
                                 </div>
 
-                                <!-- Company Location -->
+                                <!-- Website Favicon -->
                                 <div>
+                                    <label for="website_favicon" class="block text-sm font-medium text-gray-700">Tab Icon (Favicon)</label>
+                                    <input wire:model="website_favicon" id="website_favicon" type="file" accept="image/*" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+                                    @if(setting('website_favicon'))
+                                        <div class="mt-2">
+                                            <span class="text-xs text-gray-500">Current Icon:</span><br>
+                                            <img src="{{ setting('website_favicon') }}" class="h-8 mt-1 object-contain" alt="Favicon">
+                                        </div>
+                                    @endif
+                                </div>
+
+                                <!-- Company Location -->
+                                <div class="md:col-span-2">
                                     <label for="company_location" class="block text-sm font-medium text-gray-700">Company Location / Address</label>
                                     <textarea wire:model="company_location" id="company_location" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"></textarea>
+                                </div>
+                            </div>
+                            @endif
+
+                            @if(auth()->user()->hasRole('Super Admin') || auth()->user()->can('manage localization_settings'))
+                            <div x-show="tab === 'localization'" style="display: none;" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <!-- Currency Symbol -->
+                                <div>
+                                    <label for="currency_symbol" class="block text-sm font-medium text-gray-700">Currency Symbol</label>
+                                    <input wire:model="currency_symbol" id="currency_symbol" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="$" required />
                                 </div>
 
                                 <!-- Date Format -->
@@ -223,6 +219,8 @@ $clearData = function () {
                                         <option value="Y-m-d">YYYY-MM-DD</option>
                                         <option value="d/m/Y">DD/MM/YYYY</option>
                                         <option value="m/d/Y">MM/DD/YYYY</option>
+                                        <option value="M d, Y">MMM DD, YYYY</option>
+                                        <option value="F d, Y">MMMM DD, YYYY</option>
                                     </select>
                                 </div>
 
@@ -279,11 +277,12 @@ $clearData = function () {
                                             </optgroup>
                                         @endforeach
                                     </select>
-                                    <p class="mt-1.5 text-xs text-gray-400">
-                                        Stored timezone: <code class="font-mono bg-gray-100 px-1 rounded">{{ $timezone }}</code>
-                                    </p>
                                 </div>
+                            </div>
+                            @endif
 
+                            @if(auth()->user()->hasRole('Super Admin') || auth()->user()->can('manage general_settings'))
+                            <div x-show="tab === 'procurement'" style="display: none;" class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <!-- Invoice Prefix -->
                                 <div>
                                     <label for="invoice_prefix" class="block text-sm font-medium text-gray-700">Invoice Prefix</label>
@@ -294,6 +293,43 @@ $clearData = function () {
                                 <div>
                                     <label for="sales_order_prefix" class="block text-sm font-medium text-gray-700">Sales Order Prefix</label>
                                     <input wire:model="sales_order_prefix" id="sales_order_prefix" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="SO-" />
+                                </div>
+
+                                <!-- Purchase Order Defaults Section Header -->
+                                <div class="md:col-span-2 border-t border-gray-150 pt-6 mt-4">
+                                    <h3 class="text-sm font-extrabold text-gray-800 uppercase tracking-wider">Purchase Order & Tax Defaults</h3>
+                                    <p class="text-xs text-gray-400 mt-1">Configure default GST behavior, remarks, and terms for newly created Purchase Orders.</p>
+                                </div>
+
+                                <div>
+                                    <label for="default_gst_percentage" class="block text-sm font-medium text-gray-700">Default GST Percentage (%)</label>
+                                    <select wire:model="default_gst_percentage" id="default_gst_percentage" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                        <option value="0">0%</option>
+                                        @foreach($gst_percentages as $gst)
+                                            <option value="{{ $gst->value }}">{{ $gst->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <!-- Default GST Type -->
+                                <div>
+                                    <label for="default_gst_type" class="block text-sm font-medium text-gray-700">Default GST Calculation</label>
+                                    <select wire:model="default_gst_type" id="default_gst_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                        <option value="exclusive">Exclusive (Added to Subtotal)</option>
+                                        <option value="inclusive">Inclusive (Included in Price)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Default PO Remarks -->
+                                <div class="md:col-span-2">
+                                    <label for="default_po_remarks" class="block text-sm font-medium text-gray-700">Default PO Remarks</label>
+                                    <textarea wire:model="default_po_remarks" id="default_po_remarks" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="e.g., Deliver between 9 AM and 5 PM"></textarea>
+                                </div>
+
+                                <!-- Default PO Terms & Conditions -->
+                                <div class="md:col-span-2">
+                                    <label for="default_po_terms" class="block text-sm font-medium text-gray-700">Default PO Terms & Conditions</label>
+                                    <textarea wire:model="default_po_terms" id="default_po_terms" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="e.g., 1. Payment due in 30 days..."></textarea>
                                 </div>
 
                                 <!-- Live Map Configuration Section Header -->
@@ -324,6 +360,7 @@ $clearData = function () {
                                     </select>
                                 </div>
                             </div>
+                            @endif
 
                             <div class="flex items-center gap-4 mt-8">
                                 <button type="submit" class="inline-flex items-center px-4 py-2 bg-gray-800 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-gray-700 focus:bg-gray-700 active:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150">
@@ -379,15 +416,10 @@ $clearData = function () {
                             <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Clear All ERP Data</h3>
                             <div class="mt-2">
                                 <p class="text-sm text-gray-500 mb-3">Are you absolutely sure? This will <strong class="text-red-600">permanently delete</strong> all operational records. This action <strong>cannot be undone</strong>.</p>
-                                <p class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Tables that will be wiped:</p>
+                                <p class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">What will be wiped:</p>
                                 <ul class="text-xs text-gray-500 space-y-0.5 list-disc list-inside">
-                                    <li><span class="font-medium text-gray-700">CRM:</span> Leads, Activities</li>
-                                    <li><span class="font-medium text-gray-700">Sales:</span> Quotations, Sales Orders, Returns, Shipments</li>
-                                    <li><span class="font-medium text-gray-700">Procurement:</span> RFQs, Purchase Orders, GRNs, Expenses</li>
-                                    <li><span class="font-medium text-gray-700">Projects:</span> Projects, Milestones, Material Requests</li>
-                                    <li><span class="font-medium text-gray-700">Inventory:</span> Bin Stocks, Transfers, Transactions, Stock Takes</li>
-                                    <li><span class="font-medium text-gray-700">Finance:</span> AP, AR, Invoices, Payment Logs</li>
-                                    <li><span class="font-medium text-gray-700">Master Data:</span> Customers, Suppliers, Products, Drivers, Vehicles, Warehouses</li>
+                                    <li><span class="font-medium text-gray-700">All Database Records:</span> Operational data from all modules (Sales, Procurement, Inventory, Finance, CRM, etc.).</li>
+                                    <li><span class="font-medium text-gray-700">Uploaded Files:</span> Invoices, product images, attachments, and generated PDFs.</li>
                                 </ul>
                                 <p class="text-xs text-green-700 mt-2">✓ User accounts, roles, permissions, and system settings will <strong>NOT</strong> be deleted.</p>
                             </div>
