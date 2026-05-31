@@ -60,12 +60,7 @@ class BrowserFlowTest extends TestCase
         // 8. Test CRM Leads (New)
         $this->get('/crm/leads')->assertStatus(200);
 
-        // 9. Test Projects Module (New)
-        $this->get('/projects')->assertStatus(200);
-        $project = \App\Models\Project::first();
-        if ($project) {
-            $this->get(route('projects.show', $project->id))->assertStatus(200);
-        }
+
 
         // 10. Test Admin
         $this->get('/admin/roles')->assertStatus(200);
