@@ -7,7 +7,6 @@ use App\Models\SalesOrder;
 use App\Models\PurchaseOrder;
 use App\Models\AccountReceivable;
 use App\Models\CrmLead;
-use App\Models\ProjectMilestone;
 use Carbon\Carbon;
 
 new class extends Component {
@@ -127,31 +126,6 @@ new class extends Component {
             }
         }
 
-        // 6. Project Milestones due soon
-        $upcomingMilestones = ProjectMilestone::where('status', 'pending')
-            ->where('due_date', '<=', now()->addDays(7))
-            ->with('project')
-            ->orderBy('due_date', 'asc')
-            ->take(5)
-            ->get();
-            
-        foreach ($upcomingMilestones as $ms) {
-            $id = 'ms_' . $ms->id;
-            if (!in_array($id, $readIds)) {
-                $projectName = $ms->project->name ?? 'Project';
-                $dueDate = Carbon::parse($ms->due_date);
-                $alerts[] = [
-                    'id' => $id,
-                    'category' => 'Projects',
-                    'type' => 'purple',
-                    'title' => 'Upcoming Project Milestone',
-                    'message' => "Milestone '{$ms->title}' for {$projectName} is due soon on " . $dueDate->format('M d, Y') . ".",
-                    'link' => url('/projects/' . $ms->project_id),
-                    'time' => $dueDate->diffForHumans(),
-                    'created_at' => $ms->created_at ?? now()->subDays(1),
-                ];
-            }
-        }
 
         // Sort all alerts by date/time (Stock warnings float to top as urgent)
         usort($alerts, function ($a, $b) {
@@ -258,7 +232,7 @@ new class extends Component {
                     if ($activeTab === 'stock') return $notif['category'] === 'Stock';
                     if ($activeTab === 'sales') return in_array($notif['category'], ['Sales', 'Finance']);
                     if ($activeTab === 'crm') return $notif['category'] === 'CRM';
-                    if ($activeTab === 'proc') return in_array($notif['category'], ['Procurement', 'Projects']);
+                    if ($activeTab === 'proc') return in_array($notif['category'], ['Procurement']);
                     return true;
                 });
             @endphp
@@ -297,10 +271,6 @@ new class extends Component {
                             @elseif($notif['category'] === 'CRM')
                                 <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                </svg>
-                            @elseif($notif['category'] === 'Projects')
-                                <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
                                 </svg>
                             @endif
                         </div>

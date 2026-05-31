@@ -42,11 +42,12 @@ new class extends Component {
         );
 
         $this->resetInputFields();
-        session()->flash('message', $this->customerId ? 'Customer Updated Successfully.' : 'Customer Created Successfully.');
+        $this->dispatch('toast', type: 'success', message:  $this->customerId ? 'Customer Updated Successfully.' : 'Customer Created Successfully.');
     }
 
     public function edit($id)
     {
+        $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         $customer = Customer::findOrFail($id);
         $this->customerId = $id;
         $this->name = $customer->name;
@@ -62,7 +63,7 @@ new class extends Component {
     public function delete($id)
     {
         Customer::find($id)->delete();
-        session()->flash('message', 'Customer Deleted Successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Customer Deleted Successfully.');
     }
 
     public function resetInputFields()
@@ -91,11 +92,7 @@ new class extends Component {
         <div class="p-6 text-gray-900">
             <h2 class="text-2xl font-semibold mb-4">{{ $isEditing ? 'Edit Customer' : 'Create Customer' }}</h2>
 
-            @if (session()->has('message'))
-                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('message') }}</span>
-                </div>
-            @endif
+            
 
             <form wire:submit="save">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

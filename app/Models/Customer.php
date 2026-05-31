@@ -49,8 +49,15 @@ class Customer extends Model
         return $this->hasMany(Quotation::class);
     }
 
-    public function projects()
+
+
+    public function addresses()
     {
-        return $this->hasMany(Project::class);
+        return $this->morphMany(Address::class, 'addressable');
+    }
+
+    public function contactPersons()
+    {
+        return $this->morphMany(ContactPerson::class, 'contactable');
     }
 }

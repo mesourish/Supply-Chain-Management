@@ -32,8 +32,12 @@ new class extends Component {
     public $shipping_amount = 0.00;
     public $notes = '';
     
+    public $apply_gst = false;
+    public $gst_type = 'exclusive';
+    public $gst_percentage = 0;
+    
     // Item lines (array of products and details)
-    public $items = []; // array of ['product_id' => '', 'quantity' => 1, 'unit_price' => 0.00]
+    public $items = []; // array of ['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => false]
     
     public $showCreateModal = false;
     
@@ -41,6 +45,8 @@ new class extends Component {
     {
         if (!auth()->user()->can('view quotations')) { abort(403); }
         $this->valid_until = now()->addDays(30)->toDateString();
+        $this->gst_percentage = (float)setting('default_gst_percentage', '18');
+        $this->gst_type = setting('default_gst_type', 'exclusive');
         $this->resetForm();
     }
 
@@ -66,14 +72,21 @@ new class extends Component {
         $this->tax_amount = 0.00;
         $this->shipping_amount = 0.00;
         $this->notes = '';
+        $this->apply_gst = false;
+        $this->gst_type = setting('default_gst_type', 'exclusive');
         $this->items = [
-            ['product_id' => '', 'quantity' => 1, 'unit_price' => 0.00]
+            ['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => false]
         ];
     }
 
     public function addItemLine()
     {
-        $this->items[] = ['product_id' => '', 'quantity' => 1, 'unit_price' => 0.00];
+        $this->items[] = ['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => false];
+    }
+
+    public function addBlankLine()
+    {
+        $this->items[] = ['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => true];
     }
 
     public function removeItemLine($index)
@@ -86,7 +99,12 @@ new class extends Component {
 
     public function addEditItemLine()
     {
-        $this->editItems[] = ['product_id' => '', 'quantity' => 1, 'unit_price' => 0.00];
+        $this->editItems[] = ['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => false];
+    }
+
+    public function addEditBlankLine()
+    {
+        $this->editItems[] = ['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => true];
     }
 
     public function removeEditItemLine($index)
@@ -121,28 +139,59 @@ new class extends Component {
     {
         $sub = 0;
         foreach($this->items as $item) {
-            $sub += ($item['quantity'] * $item['unit_price']);
+            $sub += ((float)$item['quantity'] * (float)$item['unit_price']);
         }
         return $sub;
     }
 
+    public function getCalculatedTaxProperty()
+    {
+        if (!$this->apply_gst) return 0;
+        $sub = $this->subtotal;
+        if ($this->gst_type === 'inclusive') {
+            return $sub - ($sub / (1 + ($this->gst_percentage / 100)));
+        }
+        return $sub * ($this->gst_percentage / 100);
+    }
+
     public function getTotalProperty()
     {
-        return $this->subtotal + (float)$this->tax_amount + (float)$this->shipping_amount;
+        $sub = $this->subtotal;
+        if ($this->apply_gst && $this->gst_type === 'inclusive') {
+            return $sub + (float)$this->shipping_amount;
+        }
+        return $sub + $this->calculatedTax + (float)$this->shipping_amount;
     }
 
     public function getEditSubtotalProperty()
     {
         $sub = 0;
         foreach($this->editItems as $item) {
-            $sub += ($item['quantity'] * $item['unit_price']);
+            $sub += ((float)$item['quantity'] * (float)$item['unit_price']);
         }
         return $sub;
     }
 
+    public $editApplyGst = false;
+    public $editGstType = 'exclusive';
+
+    public function getEditCalculatedTaxProperty()
+    {
+        if (!$this->editApplyGst) return 0;
+        $sub = $this->editSubtotal;
+        if ($this->editGstType === 'inclusive') {
+            return $sub - ($sub / (1 + ($this->gst_percentage / 100)));
+        }
+        return $sub * ($this->gst_percentage / 100);
+    }
+
     public function getEditTotalProperty()
     {
-        return $this->editSubtotal + (float)$this->editTaxAmount + (float)$this->editShippingAmount;
+        $sub = $this->editSubtotal;
+        if ($this->editApplyGst && $this->editGstType === 'inclusive') {
+            return $sub + (float)$this->editShippingAmount;
+        }
+        return $sub + $this->editCalculatedTax + (float)$this->editShippingAmount;
     }
 
     public function saveQuote()
@@ -151,11 +200,13 @@ new class extends Component {
         $this->validate([
             'customer_id' => 'required|exists:customers,id',
             'valid_until' => 'required|date',
-            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.product_id' => 'required_if:items.*.is_blank,false',
+            'items.*.description' => 'required_if:items.*.is_blank,true',
             'items.*.quantity' => 'required|numeric|min:0.01',
             'items.*.unit_price' => 'required|numeric|min:0',
         ], [
-            'items.*.product_id.required' => 'Please select a product for each line.',
+            'items.*.product_id.required_if' => 'Please select a product for the line.',
+            'items.*.description.required_if' => 'Please provide a description for the blank line.',
             'items.*.quantity.min' => 'Quantity must be at least 0.01.',
         ]);
 
@@ -167,7 +218,7 @@ new class extends Component {
                 'status' => 'draft',
                 'valid_until' => $this->valid_until,
                 'total_amount' => $this->total,
-                'tax_amount' => $this->tax_amount ?: 0,
+                'tax_amount' => $this->calculatedTax,
                 'shipping_amount' => $this->shipping_amount ?: 0,
                 'notes' => $this->notes,
             ]);
@@ -175,20 +226,21 @@ new class extends Component {
             foreach($this->items as $item) {
                 QuotationItem::create([
                     'quotation_id' => $quotation->id,
-                    'product_id' => $item['product_id'],
+                    'product_id' => $item['is_blank'] ? null : $item['product_id'],
+                    'description' => $item['is_blank'] ? $item['description'] : null,
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['unit_price'],
-                    'total_price' => $item['quantity'] * $item['unit_price'],
+                    'total_price' => (float)$item['quantity'] * (float)$item['unit_price'],
                 ]);
             }
 
             DB::commit();
             $this->showCreateModal = false;
             $this->resetForm();
-            session()->flash('message', 'Draft Sales Quotation created successfully.');
+            $this->dispatch('toast', type: 'success', message:  'Draft Sales Quotation created successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
-            session()->flash('error', 'Error creating quote: ' . $e->getMessage());
+            $this->dispatch('toast', type: 'error', message:  'Error creating quote: ' . $e->getMessage());
         }
     }
 
@@ -202,6 +254,7 @@ new class extends Component {
 
     public function editQuote($id)
     {
+        $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         if (!auth()->user()->can('edit quotations')) { abort(403); }
         $quote = Quotation::with('items')->findOrFail($id);
         $this->selectedQuoteId = $id;
@@ -210,18 +263,22 @@ new class extends Component {
         $this->editTaxAmount = $quote->tax_amount;
         $this->editShippingAmount = $quote->shipping_amount;
         $this->editNotes = $quote->notes;
+        $this->editApplyGst = $quote->tax_amount > 0;
+        $this->editGstType = setting('default_gst_type', 'exclusive'); // Just use default or try to reverse calc
         $this->editItems = [];
         
         foreach ($quote->items as $item) {
             $this->editItems[] = [
                 'product_id' => $item->product_id,
+                'description' => $item->description,
                 'quantity' => $item->quantity,
                 'unit_price' => $item->unit_price,
+                'is_blank' => $item->product_id ? false : true,
             ];
         }
         
         if (empty($this->editItems)) {
-            $this->editItems = [['product_id' => '', 'quantity' => 1, 'unit_price' => 0.00]];
+            $this->editItems = [['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => false]];
         }
 
         $this->showEditModal = true;
@@ -233,11 +290,13 @@ new class extends Component {
         $this->validate([
             'editCustomerId' => 'required|exists:customers,id',
             'editValidUntil' => 'required|date',
-            'editItems.*.product_id' => 'required|exists:products,id',
+            'editItems.*.product_id' => 'required_if:editItems.*.is_blank,false',
+            'editItems.*.description' => 'required_if:editItems.*.is_blank,true',
             'editItems.*.quantity' => 'required|numeric|min:0.01',
             'editItems.*.unit_price' => 'required|numeric|min:0',
         ], [
-            'editItems.*.product_id.required' => 'Please select a product for each line.',
+            'editItems.*.product_id.required_if' => 'Please select a product for the line.',
+            'editItems.*.description.required_if' => 'Please provide a description for the blank line.',
             'editItems.*.quantity.min' => 'Quantity must be at least 0.01.',
         ]);
 
@@ -248,14 +307,14 @@ new class extends Component {
 
             $subtotal = 0;
             foreach ($this->editItems as $item) {
-                $subtotal += ($item['quantity'] * $item['unit_price']);
+                $subtotal += ((float)$item['quantity'] * (float)$item['unit_price']);
             }
-            $totalAmount = $subtotal + (float)$this->editTaxAmount + (float)$this->editShippingAmount;
+            $totalAmount = $this->editTotal;
 
             $quote->update([
                 'customer_id' => $this->editCustomerId,
                 'valid_until' => $this->editValidUntil,
-                'tax_amount' => $this->editTaxAmount ?: 0,
+                'tax_amount' => $this->editCalculatedTax,
                 'shipping_amount' => $this->editShippingAmount ?: 0,
                 'total_amount' => $totalAmount,
                 'notes' => $this->editNotes,
@@ -264,10 +323,11 @@ new class extends Component {
             foreach ($this->editItems as $item) {
                 QuotationItem::create([
                     'quotation_id' => $quote->id,
-                    'product_id' => $item['product_id'],
+                    'product_id' => $item['is_blank'] ? null : $item['product_id'],
+                    'description' => $item['is_blank'] ? $item['description'] : null,
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['unit_price'],
-                    'total_price' => $item['quantity'] * $item['unit_price'],
+                    'total_price' => (float)$item['quantity'] * (float)$item['unit_price'],
                 ]);
             }
 
@@ -276,10 +336,10 @@ new class extends Component {
             if ($this->showDetailsModal && $this->selectedQuoteId === $quote->id) {
                 $this->viewQuote($quote->id);
             }
-            session()->flash('message', 'Sales Quotation updated successfully.');
+            $this->dispatch('toast', type: 'success', message:  'Sales Quotation updated successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
-            session()->flash('error', 'Error updating quotation: ' . $e->getMessage());
+            $this->dispatch('toast', type: 'error', message:  'Error updating quotation: ' . $e->getMessage());
         }
     }
 
@@ -295,10 +355,10 @@ new class extends Component {
 
             $this->showDetailsModal = false;
             $this->showEditModal = false;
-            session()->flash('message', 'Sales Quotation deleted successfully.');
+            $this->dispatch('toast', type: 'success', message:  'Sales Quotation deleted successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
-            session()->flash('error', 'Error deleting quotation: ' . $e->getMessage());
+            $this->dispatch('toast', type: 'error', message:  'Error deleting quotation: ' . $e->getMessage());
         }
     }
 
@@ -306,7 +366,7 @@ new class extends Component {
     {
         if (!auth()->user()->can('edit quotations')) { abort(403); }
         Quotation::findOrFail($id)->update(['status' => $status]);
-        session()->flash('message', "Quotation status updated to {$status}.");
+        $this->dispatch('toast', type: 'success', message:  "Quotation status updated to {$status}.");
     }
 
     public function moveQuotationStatus($id, $newStatus)
@@ -331,6 +391,9 @@ new class extends Component {
                 'customer_id' => $quote->customer_id,
                 'status' => 'confirmed',
                 'total_amount' => $quote->total_amount,
+                'tax_amount' => $quote->tax_amount,
+                'shipping_amount' => $quote->shipping_amount,
+                'notes' => $quote->notes,
             ]);
 
             // 2. Create Sales Order items matching quote lines
@@ -338,103 +401,40 @@ new class extends Component {
                 SalesOrderItem::create([
                     'sales_order_id' => $salesOrder->id,
                     'product_id' => $item->product_id,
+                    'description' => $item->description,
                     'quantity' => $item->quantity,
                     'unit_price' => $item->unit_price,
-                    'total_price' => $item->total_price,
                 ]);
             }
 
-            // 3. Automatically create SCM Project portfolio linked to Customer
-            $projectCode = 'PRJ-' . date('Ymd') . '-' . strtoupper(bin2hex(random_bytes(3)));
-            $project = \App\Models\Project::create([
-                'name' => 'Project: ' . ($quote->customer->company_name ?? $quote->customer->name ?? 'Client') . ' - Quote #' . $quote->reference_no,
-                'code' => $projectCode,
-                'customer_id' => $quote->customer_id,
-                'status' => 'active',
-                'start_date' => now()->toDateString(),
-                'end_date' => now()->addDays(90)->toDateString(),
-                'budget' => $quote->total_amount,
-                'description' => "Automatically generated execution project from Quotation " . $quote->reference_no . ". Notes: " . $quote->notes
-            ]);
-
-            // 4. Automatically create target milestones
-            \App\Models\ProjectMilestone::create([
-                'project_id' => $project->id,
-                'title' => 'Milestone 1: Design & Engineering Kickoff',
-                'description' => 'Verify specifications and align project requirements.',
-                'due_date' => now()->addDays(15)->toDateString(),
-                'status' => 'pending',
-            ]);
-            \App\Models\ProjectMilestone::create([
-                'project_id' => $project->id,
-                'title' => 'Milestone 2: SCM Material Sourcing & Picking',
-                'description' => 'Reserve bin stocks and procure missing products.',
-                'due_date' => now()->addDays(30)->toDateString(),
-                'status' => 'pending',
-            ]);
-            \App\Models\ProjectMilestone::create([
-                'project_id' => $project->id,
-                'title' => 'Milestone 3: SCM Core Execution & Testing',
-                'description' => 'Assemble materials and execute client contract.',
-                'due_date' => now()->addDays(60)->toDateString(),
-                'status' => 'pending',
-            ]);
-            \App\Models\ProjectMilestone::create([
-                'project_id' => $project->id,
-                'title' => 'Milestone 4: Handover & Invoice Settlement',
-                'description' => 'Client sign-off and final payment certificate issuance.',
-                'due_date' => now()->addDays(90)->toDateString(),
-                'status' => 'pending',
-            ]);
-
-            // 5. Automatically sweep warehouse bins and run physical stock reservations
+            // 3. Automatically sweep warehouse bins and run physical stock reservations
             foreach($quote->items as $item) {
-                $binStock = \App\Models\BinProductStock::where('product_id', $item->product_id)
-                    ->where('quantity', '>', 0)
-                    ->orderBy('quantity', 'desc')
-                    ->first();
+                if ($item->product_id) {
+                    $binStock = \App\Models\BinProductStock::where('product_id', $item->product_id)
+                        ->where('quantity', '>', 0)
+                        ->orderBy('quantity', 'desc')
+                        ->first();
 
-                if ($binStock) {
-                    $qtyToReserve = min($item->quantity, $binStock->quantity);
+                    if ($binStock) {
+                        $qtyToReserve = min($item->quantity, $binStock->quantity);
 
-                    // Subtract physically from active bin stock
-                    $binStock->quantity -= $qtyToReserve;
-                    $binStock->save();
+                        // Subtract physically from active bin stock
+                        $binStock->quantity -= $qtyToReserve;
+                        $binStock->save();
 
-                    // Create material request reservation record
-                    \App\Models\ProjectMaterialRequest::create([
-                        'project_id' => $project->id,
-                        'product_id' => $item->product_id,
-                        'warehouse_bin_id' => $binStock->warehouse_bin_id,
-                        'quantity_requested' => $item->quantity,
-                        'quantity_reserved' => $qtyToReserve,
-                        'status' => $qtyToReserve >= $item->quantity ? 'reserved' : 'pending',
-                        'notes' => 'Auto-allocated from approved Quote ' . $quote->reference_no,
-                    ]);
-
-                    // Log stock movement transaction
-                    \App\Models\InventoryTransaction::create([
-                        'product_id' => $item->product_id,
-                        'from_bin_id' => $binStock->warehouse_bin_id,
-                        'to_bin_id' => null,
-                        'type' => 'OUT',
-                        'quantity' => $qtyToReserve,
-                        'reference_type' => 'project_reservation',
-                        'reference_id' => $project->id,
-                        'notes' => 'Auto-reserved from approved Quote ' . $quote->reference_no,
-                        'user_id' => auth()->id(),
-                    ]);
-                } else {
-                    // Out of stock, register pending request to alert procurement
-                    \App\Models\ProjectMaterialRequest::create([
-                        'project_id' => $project->id,
-                        'product_id' => $item->product_id,
-                        'warehouse_bin_id' => null,
-                        'quantity_requested' => $item->quantity,
-                        'quantity_reserved' => 0.00,
-                        'status' => 'pending',
-                        'notes' => 'Auto-created (Out of stock) from approved Quote ' . $quote->reference_no,
-                    ]);
+                        // Log stock movement transaction
+                        \App\Models\InventoryTransaction::create([
+                            'product_id' => $item->product_id,
+                            'from_bin_id' => $binStock->warehouse_bin_id,
+                            'to_bin_id' => null,
+                            'type' => 'OUT',
+                            'quantity' => $qtyToReserve,
+                            'reference_type' => 'sales_order_reservation',
+                            'reference_id' => $salesOrder->id,
+                            'notes' => 'Auto-reserved from approved Quote ' . $quote->reference_no,
+                            'user_id' => auth()->id(),
+                        ]);
+                    }
                 }
             }
 
@@ -445,10 +445,10 @@ new class extends Component {
             if ($this->showDetailsModal && $this->selectedQuoteId === $quote->id) {
                 $this->viewQuote($quote->id);
             }
-            session()->flash('message', "Quotation approved! Auto-created Sales Order SO-{$salesOrder->id} & Project portfolio {$projectCode} with standard milestones and inventory stock reservations successfully.");
+            $this->dispatch('toast', type: 'success', message:  "Quotation approved! Auto-created Sales Order SO-{$salesOrder->id} with inventory stock reservations successfully.");
         } catch (\Exception $e) {
             DB::rollBack();
-            session()->flash('error', 'Error converting quote to project: ' . $e->getMessage());
+            $this->dispatch('toast', type: 'error', message:  'Error converting quote: ' . $e->getMessage());
         }
     }
 };
@@ -457,16 +457,8 @@ new class extends Component {
 
 <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 py-8 space-y-8">
 
-    @if(session()->has('message'))
-        <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-xl shadow-sm font-semibold text-sm">
-            {{ session('message') }}
-        </div>
-    @endif
-    @if(session()->has('error'))
-        <div class="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-xl shadow-sm font-semibold text-sm">
-            {{ session('error') }}
-        </div>
-    @endif
+    
+    
 
     <!-- Header Actions & View Mode Toggle -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -526,7 +518,7 @@ new class extends Component {
                                 </td>
                                 <td class="px-4 py-3.5 text-xs text-gray-500 max-w-xs truncate">
                                     @foreach($q->items as $itm)
-                                        <div class="truncate">{{ $itm->quantity }}x {{ $itm->product->name ?? 'Unknown' }}</div>
+                                        <div class="truncate">{{ $itm->quantity }}x {{ $itm->product_id ? ($itm->product->name ?? 'Unknown') : ($itm->description ?? 'Custom Line') }}</div>
                                     @endforeach
                                 </td>
                                 <td class="px-4 py-3.5 whitespace-nowrap">
@@ -628,7 +620,7 @@ new class extends Component {
                                 <!-- Items preview -->
                                 <div class="mt-2 text-[9px] text-gray-455 border-t border-slate-100 pt-2 space-y-0.5 max-h-[60px] overflow-hidden font-medium">
                                     @foreach($quote->items as $itm)
-                                        <div class="truncate">{{ $itm->quantity }}x {{ $itm->product->name ?? 'Unknown' }}</div>
+                                        <div class="truncate">{{ $itm->quantity }}x {{ $itm->product_id ? ($itm->product->name ?? 'Unknown') : ($itm->description ?? 'Custom Line') }}</div>
                                     @endforeach
                                 </div>
 
@@ -704,9 +696,17 @@ new class extends Component {
                                 <x-input-label value="Validity Until *" />
                                 <input type="date" wire:model="valid_until" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700 font-semibold" required>
                             </div>
-                            <div>
-                                <x-input-label value="Estimated Tax Amount ($)" />
-                                <input type="number" step="0.01" wire:model.live="tax_amount" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700">
+                            <div class="space-y-2">
+                                <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer pt-6">
+                                    <input type="checkbox" wire:model.live="apply_gst" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                    <span>Apply GST ({{ $gst_percentage }}%)</span>
+                                </label>
+                                @if($apply_gst)
+                                    <select wire:model.live="gst_type" class="block w-full rounded-xl border-gray-300 text-xs text-gray-700 mt-2">
+                                        <option value="exclusive">Exclusive (+ to Subtotal)</option>
+                                        <option value="inclusive">Inclusive (in Price)</option>
+                                    </select>
+                                @endif
                             </div>
                             <div>
                                 <x-input-label value="Est. Shipping / Freight Cost ($)" />
@@ -722,20 +722,28 @@ new class extends Component {
                         <div class="border-t border-gray-150 pt-4 space-y-3">
                             <div class="flex items-center justify-between">
                                 <h4 class="text-sm font-bold text-gray-900">Line Items & Dynamic Quantities</h4>
-                                <button type="button" wire:click="addItemLine" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-[10px] font-bold">+ Add Row Line</button>
+                                <div class="flex gap-2">
+                                    <button type="button" wire:click="addBlankLine" class="px-2.5 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-[10px] font-bold">+ Blank Custom Line</button>
+                                    <button type="button" wire:click="addItemLine" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-[10px] font-bold">+ Add Product Line</button>
+                                </div>
                             </div>
 
                             <div class="space-y-3 max-h-[220px] overflow-y-auto pr-1">
                                 @foreach($items as $idx => $item)
                                     <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end bg-slate-50/50 p-2.5 rounded-2xl border border-slate-100">
                                         <div class="col-span-2">
-                                            <label class="block text-[10px] text-gray-400 font-bold uppercase">Product Item</label>
-                                            <select wire:model.live="items.{{ $idx }}.product_id" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700" required>
-                                                <option value="">-- Choose Product --</option>
-                                                @foreach($this->getProductsList() as $p)
-                                                    <option value="{{ $p->id }}">{{ $p->name }} (SKU: {{ $p->sku }})</option>
-                                                @endforeach
-                                            </select>
+                                            @if($item['is_blank'])
+                                                <label class="block text-[10px] text-gray-400 font-bold uppercase text-amber-600">Custom Item / Service</label>
+                                                <input type="text" wire:model.live="items.{{ $idx }}.description" class="mt-1 block w-full rounded-xl border-amber-300 bg-amber-50/30 text-xs text-gray-700 focus:border-amber-500 focus:ring-amber-500" placeholder="e.g. Labor Fees, Installation...">
+                                            @else
+                                                <label class="block text-[10px] text-gray-400 font-bold uppercase">Product Item</label>
+                                                <select wire:model.live="items.{{ $idx }}.product_id" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700">
+                                                    <option value="">-- Choose Product --</option>
+                                                    @foreach($this->getProductsList() as $p)
+                                                        <option value="{{ $p->id }}">{{ $p->name }} (SKU: {{ $p->sku }})</option>
+                                                    @endforeach
+                                                </select>
+                                            @endif
                                         </div>
                                         <div>
                                             <label class="block text-[10px] text-gray-400 font-bold uppercase">Quantity</label>
@@ -759,19 +767,19 @@ new class extends Component {
                         <div class="border-t border-gray-150 pt-4 flex flex-col items-end gap-2 text-sm">
                             <div class="flex gap-8">
                                 <span class="text-gray-400 font-bold uppercase">Subtotal:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">${{ number_format($this->subtotal, 2) }}</span>
+                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->subtotal, 2) }}</span>
                             </div>
                             <div class="flex gap-8">
                                 <span class="text-gray-400 font-bold uppercase">Tax:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">${{ number_format($tax_amount ?: 0, 2) }}</span>
+                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->calculatedTax, 2) }}</span>
                             </div>
                             <div class="flex gap-8">
                                 <span class="text-gray-400 font-bold uppercase">Shipping:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">${{ number_format($shipping_amount ?: 0, 2) }}</span>
+                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($shipping_amount ?: 0, 2) }}</span>
                             </div>
                             <div class="flex gap-8 border-t border-gray-200 pt-2 text-base">
                                 <span class="text-gray-500 font-black uppercase">Final Total:</span>
-                                <span class="font-black text-indigo-600 font-mono">${{ number_format($this->total, 2) }}</span>
+                                <span class="font-black text-indigo-600 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->total, 2) }}</span>
                             </div>
                         </div>
 
@@ -821,6 +829,8 @@ new class extends Component {
                             body {
                                 background: white !important;
                                 color: black !important;
+                                -webkit-print-color-adjust: exact !important;
+                                print-color-adjust: exact !important;
                             }
                             body * {
                                 visibility: hidden;
@@ -856,11 +866,15 @@ new class extends Component {
                         <div class="flex justify-between items-start border-b-2 border-slate-900 pb-6">
                             <div>
                                 <div class="flex items-center gap-2">
-                                    <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-base font-black shadow-md">S</div>
-                                    <span class="text-lg font-black text-slate-900 tracking-tight">SCM ENTERPRISE SUITE</span>
+                                    @if(setting('website_logo'))
+                                        <img src="{{ setting('website_logo') }}" class="h-8 object-contain" alt="Logo">
+                                    @else
+                                        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-base font-black shadow-md">S</div>
+                                    @endif
+                                    <span class="text-lg font-black text-slate-900 tracking-tight">{{ setting('website_name', 'SCM ENTERPRISE SUITE') }}</span>
                                 </div>
                                 <p class="text-[9px] text-slate-500 mt-1 font-bold">EXCELLENCE IN GLOBAL SUPPLY CHAINS</p>
-                                <p class="text-[9px] text-slate-400 mt-0.5">100 Logistics Blvd, Warehouse District</p>
+                                <p class="text-[9px] text-slate-400 mt-0.5 whitespace-pre-wrap">{!! nl2br(e(setting('company_location', '100 Logistics Blvd, Warehouse District'))) !!}</p>
                                 <p class="text-[9px] text-slate-400">billing@scm-erp.example.com</p>
                             </div>
                             
@@ -902,8 +916,8 @@ new class extends Component {
                                 <div class="mt-1">
                                     <p class="text-sm font-black text-slate-900">SCM Sales & Procurement Team</p>
                                     <p class="text-slate-500 font-medium">Automated Enterprise Routing</p>
-                                    <p class="text-slate-500 font-medium font-mono">Date Issued: {{ date('M d, Y', strtotime($selectedQuote->created_at)) }}</p>
-                                    <p class="text-slate-500 font-medium font-mono">Currency: USD ($)</p>
+                                    <p class="text-slate-500 font-medium font-mono">Date Issued: {{ $selectedQuote->created_at->format(setting('date_format', 'Y-m-d')) }}</p>
+                                    <p class="text-slate-500 font-medium font-mono">Currency: {{ setting('currency_symbol', '$') }}</p>
                                 </div>
                             </div>
                         </div>
@@ -931,8 +945,8 @@ new class extends Component {
                                             </td>
                                             <td class="px-3 py-2.5 font-mono text-[10px] text-slate-500">{{ $itm->product->sku ?? '--' }}</td>
                                             <td class="px-3 py-2.5 text-right font-mono font-bold">{{ number_format($itm->quantity, 2) }}</td>
-                                            <td class="px-3 py-2.5 text-right font-mono">${{ number_format($itm->unit_price, 2) }}</td>
-                                            <td class="px-3 py-2.5 text-right font-mono font-black text-slate-900">${{ number_format($itm->total_price, 2) }}</td>
+                                            <td class="px-3 py-2.5 text-right font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($itm->unit_price, 2) }}</td>
+                                            <td class="px-3 py-2.5 text-right font-mono font-black text-slate-900">{{ setting('currency_symbol', '$') }}{{ number_format($itm->total_price, 2) }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -944,19 +958,19 @@ new class extends Component {
                             <div class="w-64 space-y-1.5 text-[10px] font-semibold text-slate-500">
                                 <div class="flex justify-between">
                                     <span>SUBTOTAL VALUE:</span>
-                                    <span class="font-mono font-bold text-slate-800">${{ number_format($selectedQuote->total_amount - $selectedQuote->tax_amount - $selectedQuote->shipping_amount, 2) }}</span>
+                                    <span class="font-mono font-bold text-slate-800">{{ setting('currency_symbol', '$') }}{{ number_format($selectedQuote->total_amount - $selectedQuote->tax_amount - $selectedQuote->shipping_amount, 2) }}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span>ESTIMATED TAX:</span>
-                                    <span class="font-mono font-bold text-slate-800">${{ number_format($selectedQuote->tax_amount, 2) }}</span>
+                                    <span class="font-mono font-bold text-slate-800">{{ setting('currency_symbol', '$') }}{{ number_format($selectedQuote->tax_amount, 2) }}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span>SHIPPING / FREIGHT:</span>
-                                    <span class="font-mono font-bold text-slate-800">${{ number_format($selectedQuote->shipping_amount, 2) }}</span>
+                                    <span class="font-mono font-bold text-slate-800">{{ setting('currency_symbol', '$') }}{{ number_format($selectedQuote->shipping_amount, 2) }}</span>
                                 </div>
                                 <div class="flex justify-between border-t border-slate-200 pt-2 text-xs font-black">
                                     <span class="text-slate-800">GRAND TOTAL:</span>
-                                    <span class="font-mono text-indigo-700">${{ number_format($selectedQuote->total_amount, 2) }}</span>
+                                    <span class="font-mono text-indigo-700">{{ setting('currency_symbol', '$') }}{{ number_format($selectedQuote->total_amount, 2) }}</span>
                                 </div>
                             </div>
                         </div>
@@ -998,7 +1012,7 @@ new class extends Component {
                             @endif
                             @if($selectedQuote->status === 'sent')
                                 <button type="button" wire:click="convertToSalesOrder({{ $selectedQuote->id }})" class="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl transition-colors">
-                                    Accept Quote &amp; Auto-Launch SCM Project
+                                    Accept Quote &amp; Auto-Launch Sales Order
                                 </button>
                                 <button type="button" wire:click="updateStatus({{ $selectedQuote->id }}, 'rejected')" class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl transition-colors">
                                     Mark Rejected
@@ -1047,9 +1061,17 @@ new class extends Component {
                                 <x-input-label value="Validity Until *" />
                                 <input type="date" wire:model="editValidUntil" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700 font-semibold" required>
                             </div>
-                            <div>
-                                <x-input-label value="Estimated Tax Amount ($)" />
-                                <input type="number" step="0.01" wire:model.live="editTaxAmount" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700">
+                            <div class="space-y-2">
+                                <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer pt-6">
+                                    <input type="checkbox" wire:model.live="editApplyGst" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                    <span>Apply GST ({{ $gst_percentage }}%)</span>
+                                </label>
+                                @if($editApplyGst)
+                                    <select wire:model.live="editGstType" class="block w-full rounded-xl border-gray-300 text-xs text-gray-700 mt-2">
+                                        <option value="exclusive">Exclusive (+ to Subtotal)</option>
+                                        <option value="inclusive">Inclusive (in Price)</option>
+                                    </select>
+                                @endif
                             </div>
                             <div>
                                 <x-input-label value="Est. Shipping / Freight Cost ($)" />
@@ -1065,20 +1087,28 @@ new class extends Component {
                         <div class="border-t border-gray-150 pt-4 space-y-3">
                             <div class="flex items-center justify-between">
                                 <h4 class="text-sm font-bold text-gray-900">Line Items & Dynamic Quantities</h4>
-                                <button type="button" wire:click="addEditItemLine" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-[10px] font-bold">+ Add Row Line</button>
+                                <div class="flex gap-2">
+                                    <button type="button" wire:click="addEditBlankLine" class="px-2.5 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-[10px] font-bold">+ Blank Custom Line</button>
+                                    <button type="button" wire:click="addEditItemLine" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-[10px] font-bold">+ Add Product Line</button>
+                                </div>
                             </div>
 
                             <div class="space-y-3 max-h-[220px] overflow-y-auto pr-1">
                                 @foreach($editItems as $idx => $item)
                                     <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end bg-slate-50/50 p-2.5 rounded-2xl border border-slate-100">
                                         <div class="col-span-2">
-                                            <label class="block text-[10px] text-gray-400 font-bold uppercase">Product Item</label>
-                                            <select wire:model.live="editItems.{{ $idx }}.product_id" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700" required>
-                                                <option value="">-- Choose Product --</option>
-                                                @foreach($this->getProductsList() as $p)
-                                                    <option value="{{ $p->id }}">{{ $p->name }} (SKU: {{ $p->sku }})</option>
-                                                @endforeach
-                                            </select>
+                                            @if($item['is_blank'])
+                                                <label class="block text-[10px] text-gray-400 font-bold uppercase text-amber-600">Custom Item / Service</label>
+                                                <input type="text" wire:model.live="editItems.{{ $idx }}.description" class="mt-1 block w-full rounded-xl border-amber-300 bg-amber-50/30 text-xs text-gray-700 focus:border-amber-500 focus:ring-amber-500" placeholder="e.g. Labor Fees, Installation...">
+                                            @else
+                                                <label class="block text-[10px] text-gray-400 font-bold uppercase">Product Item</label>
+                                                <select wire:model.live="editItems.{{ $idx }}.product_id" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700">
+                                                    <option value="">-- Choose Product --</option>
+                                                    @foreach($this->getProductsList() as $p)
+                                                        <option value="{{ $p->id }}">{{ $p->name }} (SKU: {{ $p->sku }})</option>
+                                                    @endforeach
+                                                </select>
+                                            @endif
                                         </div>
                                         <div>
                                             <label class="block text-[10px] text-gray-400 font-bold uppercase">Quantity</label>
@@ -1102,19 +1132,19 @@ new class extends Component {
                         <div class="border-t border-gray-150 pt-4 flex flex-col items-end gap-2 text-sm">
                             <div class="flex gap-8">
                                 <span class="text-gray-400 font-bold uppercase">Subtotal:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">${{ number_format($this->editSubtotal, 2) }}</span>
+                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->editSubtotal, 2) }}</span>
                             </div>
                             <div class="flex gap-8">
                                 <span class="text-gray-400 font-bold uppercase">Tax:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">${{ number_format($editTaxAmount ?: 0, 2) }}</span>
+                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->editCalculatedTax, 2) }}</span>
                             </div>
                             <div class="flex gap-8">
                                 <span class="text-gray-400 font-bold uppercase">Shipping:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">${{ number_format($editShippingAmount ?: 0, 2) }}</span>
+                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($editShippingAmount ?: 0, 2) }}</span>
                             </div>
                             <div class="flex gap-8 border-t border-gray-200 pt-2 text-base">
                                 <span class="text-gray-500 font-black uppercase">Final Total:</span>
-                                <span class="font-black text-indigo-600 font-mono">${{ number_format($this->editTotal, 2) }}</span>
+                                <span class="font-black text-indigo-600 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->editTotal, 2) }}</span>
                             </div>
                         </div>
 

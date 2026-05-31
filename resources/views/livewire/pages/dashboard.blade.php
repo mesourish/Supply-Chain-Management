@@ -20,24 +20,27 @@ new class extends Component {
     public $inTransitShipments = 0;
     public $recentTransactions = [];
     
-    // Revenue and Expenses
-    public $totalRevenue = 0;
-    public $totalSpend = 0;
-    public $revenueTrend = [];
-    public $spendTrend = [];
-    public $trendLabels = [];
-
-    // Categories Distribution
-    public $categoryLabels = [];
-    public $categoryCounts = [];
-
-    // Shipments Status Distribution
-    public $shipmentStatusLabels = [];
-    public $shipmentStatusCounts = [];
+    // Flow Data (DFD)
+    public $supplyChainFlow = [];
+    public $financialFlow = [];
 
     // Accounts Outstanding
     public $accountsReceivableUnpaid = 0;
     public $accountsPayableUnpaid = 0;
+
+    // Financials
+    public $totalRevenue = 0;
+    public $totalSpend = 0;
+    
+    // Advanced Options
+    public $chartDates = [];
+    public $chartRevenue = [];
+    public $chartSpend = [];
+    public $topProductsLabels = [];
+    public $topProductsSeries = [];
+    public $aiInsights = [];
+    public $grossProfit = 0;
+    public $netMargin = 0;
 
     public function mount()
     {
@@ -121,105 +124,56 @@ new class extends Component {
             ->take(6)
             ->get();
 
-        // 2. Trend Data (Revenue vs Spend)
-        $labels = [];
-        $revSeries = [];
-        $spendSeries = [];
+        // Flow Data (DFD) based on Timeframe
+        $this->supplyChainFlow = [];
+        $this->financialFlow = [];
 
-        if ($this->timeframe === 'today') {
-            // 6 intervals of 4 hours to display a beautiful continuous trend curve for the day
-            for ($hour = 0; $hour < 24; $hour += 4) {
-                $startHour = now()->startOfDay()->addHours($hour);
-                $endHour = $startHour->copy()->addHours(4)->subSecond();
-                $labels[] = $startHour->format('H:i');
-                
-                $revSeries[] = SalesOrder::whereIn('status', ['confirmed', 'processing', 'shipped', 'delivered'])
-                    ->whereBetween('created_at', [$startHour, $endHour])
-                    ->sum('total_amount');
-                    
-                $spendSeries[] = PurchaseOrder::whereIn('status', ['approved', 'partially_received', 'received'])
-                    ->whereBetween('created_at', [$startHour, $endHour])
-                    ->sum('total_amount') + Expense::whereBetween('expense_date', [$startHour->toDateString(), $startHour->toDateString()])
-                    ->whereBetween('created_at', [$startHour, $endHour])
-                    ->sum('amount');
-            }
-        } elseif ($this->timeframe === 'this_month') {
-            // Show every single day of the current month so far / total days
-            $daysInMonth = now()->daysInMonth;
-            for ($i = 1; $i <= $daysInMonth; $i++) {
-                $day = now()->startOfMonth()->addDays($i - 1);
-                $labels[] = $day->format('M d');
-                $dayStart = $day->copy()->startOfDay();
-                $dayEnd = $day->copy()->endOfDay();
-                
-                $revSeries[] = SalesOrder::whereIn('status', ['confirmed', 'processing', 'shipped', 'delivered'])
-                    ->whereBetween('created_at', [$dayStart, $dayEnd])
-                    ->sum('total_amount');
-                    
-                $spendSeries[] = PurchaseOrder::whereIn('status', ['approved', 'partially_received', 'received'])
-                    ->whereBetween('created_at', [$dayStart, $dayEnd])
-                    ->sum('total_amount') + Expense::whereBetween('expense_date', [$day->toDateString(), $day->toDateString()])->sum('amount');
-            }
-        } elseif ($this->timeframe === 'all_time') {
-            // Show monthly intervals over the past 6 months
-            for ($i = 5; $i >= 0; $i--) {
-                $monthStart = now()->subMonths($i)->startOfMonth();
-                $monthEnd = now()->subMonths($i)->endOfMonth();
-                $labels[] = $monthStart->format('M Y');
-                
-                $revSeries[] = SalesOrder::whereIn('status', ['confirmed', 'processing', 'shipped', 'delivered'])
-                    ->whereBetween('created_at', [$monthStart, $monthEnd])
-                    ->sum('total_amount');
-                    
-                $spendSeries[] = PurchaseOrder::whereIn('status', ['approved', 'partially_received', 'received'])
-                    ->whereBetween('created_at', [$monthStart, $monthEnd])
-                    ->sum('total_amount') + Expense::whereBetween('expense_date', [$monthStart->toDateString(), $monthEnd->toDateString()])->sum('amount');
-            }
+        // 1. Supply Chain Flow (DFD)
+        $poTotals = PurchaseOrder::select('supplier_id', \DB::raw('SUM(total_amount) as total'))
+            ->whereBetween('created_at', [$start, $end])
+            ->where('status', '!=', 'cancelled')
+            ->groupBy('supplier_id')
+            ->with('supplier')->get();
+        foreach($poTotals as $po) {
+            $this->supplyChainFlow[] = ['Supplier: ' . ($po->supplier->name ?? 'Unknown'), 'Inventory', (float)$po->total];
+        }
+        
+        $salesTotals = SalesOrder::select('customer_id', \DB::raw('SUM(total_amount) as total'))
+            ->whereBetween('created_at', [$start, $end])
+            ->where('status', '!=', 'cancelled')
+            ->groupBy('customer_id')
+            ->with('customer')->get();
+        foreach($salesTotals as $sale) {
+            $this->supplyChainFlow[] = ['Inventory', 'Customer: ' . ($sale->customer->name ?? 'Unknown'), (float)$sale->total];
+        }
+
+        // 2. Financial Cash Flow (DFD)
+        $totalRevenueFlow = \App\Models\PaymentLog::whereNotNull('account_receivable_id')
+            ->whereBetween('payment_date', [$start->toDateString(), $end->toDateString()])
+            ->sum('amount');
+        if ($totalRevenueFlow > 0) {
+            $this->financialFlow[] = ['Revenue (Sales)', 'Company Cash', (float)$totalRevenueFlow];
         } else {
-            // 7_days or 30_days
-            $trendDays = $this->timeframe === '7_days' ? 7 : 30;
-            for ($i = $trendDays - 1; $i >= 0; $i--) {
-                $day = now()->subDays($i);
-                $labels[] = $day->format('M d');
-                $dayStart = $day->copy()->startOfDay();
-                $dayEnd = $day->copy()->endOfDay();
-
-                $revSeries[] = SalesOrder::whereIn('status', ['confirmed', 'processing', 'shipped', 'delivered'])
-                    ->whereBetween('created_at', [$dayStart, $dayEnd])
-                    ->sum('total_amount');
-                    
-                $spendSeries[] = PurchaseOrder::whereIn('status', ['approved', 'partially_received', 'received'])
-                    ->whereBetween('created_at', [$dayStart, $dayEnd])
-                    ->sum('total_amount') + Expense::whereBetween('expense_date', [$day->toDateString(), $day->toDateString()])->sum('amount');
-            }
+            // Fallback if no payments recorded
+            $this->financialFlow[] = ['Revenue (Sales)', 'Company Cash', (float)$this->totalRevenue];
         }
-        
-        $this->trendLabels = $labels;
-        $this->revenueTrend = array_map('floatval', $revSeries);
-        $this->spendTrend = array_map('floatval', $spendSeries);
 
-        // 3. Categories Distribution
-        $categoryData = Product::groupBy('category')
-            ->select('category', \DB::raw('count(*) as count'))
-            ->pluck('count', 'category')
-            ->toArray();
-        
-        $this->categoryLabels = array_keys($categoryData);
-        foreach ($this->categoryLabels as $idx => $lbl) {
-            if (empty($lbl)) {
-                $this->categoryLabels[$idx] = 'Uncategorized';
-            }
+        $expensesByCategory = Expense::select('category', \DB::raw('SUM(amount) as total'))
+            ->whereBetween('expense_date', [$start->toDateString(), $end->toDateString()])
+            ->groupBy('category')
+            ->orderByDesc('total')
+            ->get();
+
+        foreach($expensesByCategory as $exp) {
+            $this->financialFlow[] = ['Company Cash', 'Expense: ' . ($exp->category ?: 'Uncategorized'), (float)$exp->total];
         }
-        $this->categoryCounts = array_map('intval', array_values($categoryData));
 
-        // 4. Shipment Status Distribution
-        $shipmentData = Shipment::groupBy('status')
-            ->select('status', \DB::raw('count(*) as count'))
-            ->pluck('count', 'status')
-            ->toArray();
-            
-        $this->shipmentStatusLabels = array_keys($shipmentData);
-        $this->shipmentStatusCounts = array_values($shipmentData);
+        $poPayments = \App\Models\PaymentLog::whereNotNull('account_payable_id')
+            ->whereBetween('payment_date', [$start->toDateString(), $end->toDateString()])
+            ->sum('amount');
+        if ($poPayments > 0) {
+            $this->financialFlow[] = ['Company Cash', 'Supplier Payments', (float)$poPayments];
+        }
 
         // 5. Unpaid Finance totals
         $this->accountsReceivableUnpaid = AccountReceivable::where('status', 'unpaid')
@@ -229,6 +183,100 @@ new class extends Component {
         $this->accountsPayableUnpaid = AccountPayable::where('status', 'unpaid')
             ->whereBetween('created_at', [$start, $end])
             ->sum('amount');
+
+        // ---- ADVANCED OPTIONS DATA ----
+        
+        // Charts Data: Dynamic by timeframe
+        $this->chartDates = [];
+        $this->chartRevenue = [];
+        $this->chartSpend = [];
+        
+        $salesRecords = SalesOrder::whereIn('status', ['confirmed', 'processing', 'shipped', 'delivered'])
+            ->whereBetween('created_at', [$start, $end])
+            ->get();
+        $purchaseRecords = PurchaseOrder::whereIn('status', ['approved', 'partially_received', 'received'])
+            ->whereBetween('created_at', [$start, $end])
+            ->get();
+        $expenseRecords = Expense::whereBetween('expense_date', [$start->toDateString(), $end->toDateString()])->get();
+        
+        $intervalDays = 1;
+        $periods = 7;
+        if ($this->timeframe === 'today') { $intervalDays = 0; $periods = 24; } // Hours
+        elseif ($this->timeframe === '30_days' || $this->timeframe === 'this_month') { $intervalDays = 4; $periods = 7; }
+        elseif ($this->timeframe === 'all_time') { $intervalDays = 365; $periods = 5; }
+        
+        for ($i = $periods; $i >= 0; $i--) {
+            if ($this->timeframe === 'today') {
+                $dStart = now()->subHours($i)->startOfHour();
+                $dEnd = now()->subHours($i)->endOfHour();
+                $label = $dStart->format('H:00');
+            } else {
+                $dStart = now()->subDays($i * $intervalDays)->startOfDay();
+                // for all_time, it's roughly years. let's just use days for simplicity for now
+                if ($this->timeframe === 'all_time') {
+                     $dStart = now()->subYears($i)->startOfYear();
+                     $dEnd = now()->subYears($i)->endOfYear();
+                     $label = $dStart->format('Y');
+                } else {
+                    $dEnd = now()->subDays($i * $intervalDays)->addDays(max(0, $intervalDays - 1))->endOfDay();
+                    $label = $dStart->format('M d');
+                }
+            }
+            $this->chartDates[] = $label;
+            
+            $rev = $salesRecords->whereBetween('created_at', [$dStart, $dEnd])->sum('total_amount');
+            $spend = $purchaseRecords->whereBetween('created_at', [$dStart, $dEnd])->sum('total_amount') + 
+                     $expenseRecords->whereBetween('expense_date', [$dStart->toDateString(), $dEnd->toDateString()])->sum('amount');
+                     
+            $this->chartRevenue[] = (float)$rev;
+            $this->chartSpend[] = (float)$spend;
+        }
+        
+        // Top Products by Quantity Sold
+        $topProductsQuery = \DB::table('sales_order_items')
+            ->join('sales_orders', 'sales_order_items.sales_order_id', '=', 'sales_orders.id')
+            ->join('products', 'sales_order_items.product_id', '=', 'products.id')
+            ->select('products.name', \DB::raw('SUM(sales_order_items.quantity) as total_sold'))
+            ->whereBetween('sales_orders.created_at', [$start, $end])
+            ->whereIn('sales_orders.status', ['confirmed', 'processing', 'shipped', 'delivered'])
+            ->groupBy('products.id', 'products.name')
+            ->orderByDesc('total_sold')
+            ->limit(4)
+            ->get();
+            
+        $this->topProductsLabels = $topProductsQuery->pluck('name')->toArray();
+        $this->topProductsSeries = $topProductsQuery->pluck('total_sold')->map(fn($val) => (int)$val)->toArray();
+        
+        if (empty($this->topProductsLabels)) {
+            $this->topProductsLabels = ['No Data'];
+            $this->topProductsSeries = [1];
+        }
+        
+        // Profitability
+        $this->grossProfit = $this->totalRevenue - $this->totalSpend;
+        $this->netMargin = $this->totalRevenue > 0 ? ($this->grossProfit / $this->totalRevenue) * 100 : 0;
+        
+        // AI Insights
+        $this->aiInsights = [];
+        if ($this->accountsPayableUnpaid > $this->accountsReceivableUnpaid) {
+            $this->aiInsights[] = "⚠️ Accounts Payable is higher than Receivables. Cash flow might be tight this period.";
+        }
+        if ($this->lowStockCount > 0) {
+            $this->aiInsights[] = "🚀 High velocity detected causing {$this->lowStockCount} products to hit critical levels. Generate POs via Intelligence Hub.";
+        }
+        if ($this->netMargin > 20) {
+            $this->aiInsights[] = "📈 Excellent profitability detected! Net margin is holding strong at " . number_format($this->netMargin, 1) . "%.";
+        }
+        if (empty($this->aiInsights)) {
+            $this->aiInsights[] = "✅ Operations are running smoothly. No critical anomalies detected.";
+        }
+    }
+
+    public function formatCurrency($amount) {
+        if ($amount >= 1000000) return number_format($amount / 1000000, 2) . 'M';
+        if ($amount >= 100000) return number_format($amount / 1000, 0) . 'k';
+        if ($amount >= 1000) return number_format($amount / 1000, 1) . 'k';
+        return number_format($amount, 2);
     }
 
     public function setTimeframe($value)
@@ -236,13 +284,11 @@ new class extends Component {
         $this->timeframe = $value;
         $this->loadData();
         $this->dispatch('timeframe-changed', [
-            'trendLabels' => $this->trendLabels,
-            'revenueTrend' => $this->revenueTrend,
-            'spendTrend' => $this->spendTrend,
-            'categoryLabels' => $this->categoryLabels,
-            'categoryCounts' => $this->categoryCounts,
-            'shipmentStatusLabels' => $this->shipmentStatusLabels,
-            'shipmentStatusCounts' => $this->shipmentStatusCounts,
+            'chartDates' => $this->chartDates,
+            'chartRevenue' => $this->chartRevenue,
+            'chartSpend' => $this->chartSpend,
+            'topProductsLabels' => $this->topProductsLabels,
+            'topProductsSeries' => $this->topProductsSeries,
         ]);
     }
 };
@@ -250,8 +296,6 @@ new class extends Component {
 ?>
 
 <div>
-    <!-- ApexCharts Library -->
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 
     <x-slot name="header">
         <h2 class="font-semibold text-2xl text-gray-800 leading-tight">
@@ -345,8 +389,39 @@ new class extends Component {
                 </div>
             </div>
 
+            
+            <!-- ADVANCED: AI Insights Banner -->
+            @if(count($aiInsights) > 0)
+            <div class="bg-gradient-to-r from-indigo-50 to-violet-50 rounded-2xl p-4 shadow-sm border border-indigo-100 flex items-start gap-4">
+                <div class="p-2 bg-white rounded-xl shadow-sm text-indigo-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
+                <div class="flex-1">
+                    <h4 class="text-sm font-bold text-indigo-900">AI Business Insights</h4>
+                    <ul class="mt-1 space-y-1">
+                        @foreach($aiInsights as $insight)
+                            <li class="text-xs font-medium text-indigo-700/80">{{ $insight }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            </div>
+            @endif
+
+            <!-- ADVANCED: Quick Action Hub -->
+            <div class="flex flex-wrap gap-3">
+                <a href="{{ url('/procurement/purchase-orders') }}" class="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 shadow-sm transition-all flex items-center gap-2">
+                    <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg> New PO
+                </a>
+                <a href="{{ url('/sales/orders') }}" class="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 shadow-sm transition-all flex items-center gap-2">
+                    <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg> New Sales Order
+                </a>
+                <a href="{{ url('/finance/expenses') }}" class="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 shadow-sm transition-all flex items-center gap-2">
+                    <svg class="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg> Log Expense
+                </a>
+            </div>
+
             <!-- 2. Rich KPIs Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-6">
                 <!-- Revenue Card -->
                 <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-150 relative overflow-hidden group hover:shadow-md transition-all duration-200">
                     <div class="absolute bottom-0 left-0 right-0 h-1 bg-indigo-500"></div>
@@ -358,7 +433,7 @@ new class extends Component {
                         </div>
                     </div>
                     <div class="mt-4">
-                        <h3 class="text-3xl font-black text-gray-900 tracking-tight">${{ number_format($totalRevenue, 2) }}</h3>
+                        <h3 class="text-2xl xl:text-3xl font-black text-gray-900 tracking-tight truncate" title="{{ setting('currency_symbol', '$') }}{{ number_format($totalRevenue, 2) }}">{{ setting('currency_symbol', '$') }}{{ $this->formatCurrency($totalRevenue) }}</h3>
                         <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">
                             <span class="text-indigo-600 font-semibold">Sales Orders</span>
                             in timeframe
@@ -377,7 +452,7 @@ new class extends Component {
                         </div>
                     </div>
                     <div class="mt-4">
-                        <h3 class="text-3xl font-black text-gray-900 tracking-tight">${{ number_format($totalSpend, 2) }}</h3>
+                        <h3 class="text-2xl xl:text-3xl font-black text-gray-900 tracking-tight truncate" title="{{ setting('currency_symbol', '$') }}{{ number_format($totalSpend, 2) }}">{{ setting('currency_symbol', '$') }}{{ $this->formatCurrency($totalSpend) }}</h3>
                         <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">
                             <span class="text-emerald-600 font-semibold">POs + Expenses</span>
                             in timeframe
@@ -406,6 +481,25 @@ new class extends Component {
                     </div>
                 </a>
 
+                
+                <!-- ADVANCED: Profitability Card -->
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-150 relative overflow-hidden group hover:shadow-md transition-all duration-200">
+                    <div class="absolute bottom-0 left-0 right-0 h-1 bg-violet-500"></div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Gross Profit</span>
+                        <div class="p-2.5 bg-violet-50 text-violet-600 rounded-xl">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <h3 class="text-2xl xl:text-3xl font-black text-gray-900 tracking-tight truncate" title="{{ setting('currency_symbol', '$') }}{{ number_format($grossProfit, 2) }}">{{ setting('currency_symbol', '$') }}{{ $this->formatCurrency($grossProfit) }}</h3>
+                        <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                            <span class="text-violet-600 font-bold">{{ number_format($netMargin, 1) }}%</span>
+                            Net Margin
+                        </p>
+                    </div>
+                </div>
+
                 <!-- Deliveries Card -->
                 <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-150 relative overflow-hidden group hover:shadow-md transition-all duration-200">
                     <div class="absolute bottom-0 left-0 right-0 h-1 bg-sky-500"></div>
@@ -423,38 +517,18 @@ new class extends Component {
                 </div>
             </div>
 
-            <!-- 3. Dynamic Visualizations Layer (Charts) -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <!-- Trend Chart: Revenue vs Spend -->
-                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150 lg:col-span-2 overflow-hidden flex flex-col">
-                    <div class="flex items-center justify-between mb-4 flex-shrink-0">
-                        <div>
-                            <h3 class="text-lg font-bold text-gray-900">Financial Revenue &amp; Procurement Spend</h3>
-                            <p class="text-xs text-gray-400">Time-series overview of incoming sales vs procurement investments</p>
-                        </div>
-                        <span class="text-xs font-semibold px-2.5 py-1 bg-gray-100 text-gray-700 rounded-lg uppercase whitespace-nowrap">Spline Area</span>
-                    </div>
-                    <!-- Chart container: fixed height, overflow clipped by parent -->
-                    <div id="financial-trend-chart" class="w-full flex-1 min-h-0" style="height: 300px;"></div>
-                </div>
+            <!-- Visualizations removed as per request -->
 
-                <!-- Donut Chart: Inventory Categories -->
-                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150 flex flex-col overflow-hidden">
-                    <div class="flex-shrink-0">
-                        <div class="flex items-center justify-between mb-2">
-                            <h3 class="text-lg font-bold text-gray-900">Category Breakdown</h3>
-                            <span class="text-xs font-semibold px-2.5 py-1 bg-gray-100 text-gray-700 rounded-lg">Product Count</span>
-                        </div>
-                        <p class="text-xs text-gray-400 mb-4">Distribution of current inventory items by category</p>
-                    </div>
-                    <div class="flex items-center justify-center flex-1 min-h-0">
-                        <div id="category-donut-chart" class="w-full"></div>
-                    </div>
-                    <div class="border-t border-gray-100 pt-4 text-center flex-shrink-0">
-                        <a href="{{ url('/products') }}" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
-                            Manage All Products &rarr;
-                        </a>
-                    </div>
+            
+            <!-- ADVANCED: ApexCharts Visualizations -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8" wire:ignore>
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150 lg:col-span-2">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4">Revenue vs Procurement Spend</h3>
+                    <div id="revenueSpendChart" class="w-full h-72"></div>
+                </div>
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4">Top Velocity Products</h3>
+                    <div id="topProductsChart" class="w-full h-72 flex items-center justify-center"></div>
                 </div>
             </div>
 
@@ -548,7 +622,7 @@ new class extends Component {
                                         <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
                                         Accounts Receivable (A/R)
                                     </span>
-                                    <span class="text-sm font-extrabold text-gray-900">${{ number_format($accountsReceivableUnpaid, 2) }}</span>
+                                    <span class="text-sm font-extrabold text-gray-900">{{ setting('currency_symbol', '$') }}{{ number_format($accountsReceivableUnpaid, 2) }}</span>
                                 </div>
                                 <div class="w-full bg-gray-100 rounded-full h-3">
                                     @php
@@ -570,7 +644,7 @@ new class extends Component {
                                         <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
                                         Accounts Payable (A/P)
                                     </span>
-                                    <span class="text-sm font-extrabold text-gray-900">${{ number_format($accountsPayableUnpaid, 2) }}</span>
+                                    <span class="text-sm font-extrabold text-gray-900">{{ setting('currency_symbol', '$') }}{{ number_format($accountsPayableUnpaid, 2) }}</span>
                                 </div>
                                 <div class="w-full bg-gray-100 rounded-full h-3">
                                     @php
@@ -624,7 +698,7 @@ new class extends Component {
                                 <tr class="hover:bg-gray-50/30 transition-colors">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">
                                         {{ $tx->created_at->diffForHumans() }}
-                                        <div class="text-[10px] text-gray-400 mt-0.5">{{ $tx->created_at->format('M d, H:i') }}</div>
+                                        <div class="text-[10px] text-gray-400 mt-0.5">{{ $tx->created_at->format(setting('date_format', 'Y-m-d') . ' ' . setting('time_format', 'H:i')) }}</div>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="text-sm font-semibold text-gray-900">{{ $tx->product->name ?? 'N/A' }}</div>
@@ -671,133 +745,72 @@ new class extends Component {
             </div>
 
         </div>
-    </div>
-
-    <!-- Chart Configuration Script (AlpineJS & ApexCharts Binding) -->
+    
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            let trendChartInstance = null;
-            let donutChartInstance = null;
-
-            const trendOptions = {
+        document.addEventListener('livewire:initialized', () => {
+            // Revenue vs Spend Chart
+            var revOptions = {
+                series: [{
+                    name: 'Revenue',
+                    data: @json($chartRevenue)
+                }, {
+                    name: 'Spend',
+                    data: @json($chartSpend)
+                }],
                 chart: {
+                    height: 280,
                     type: 'area',
-                    height: 300,
-                    parentHeightOffset: 0,
-                    toolbar: { show: false },
-                    zoom: { enabled: false },
                     fontFamily: 'Inter, sans-serif',
-                    redrawOnParentResize: true,
-                    redrawOnWindowResize: true,
+                    toolbar: { show: false }
                 },
                 colors: ['#4f46e5', '#10b981'],
                 dataLabels: { enabled: false },
-                stroke: { curve: 'smooth', width: 3 },
-                grid: {
-                    borderColor: '#f1f5f9',
-                    strokeDashArray: 4,
-                    xaxis: { lines: { show: false } },
-                    yaxis: { lines: { show: true } }
-                },
-                series: [
-                    { name: 'Revenue', data: @json($revenueTrend) },
-                    { name: 'Spend', data: @json($spendTrend) }
-                ],
+                stroke: { curve: 'smooth', width: 2 },
                 xaxis: {
-                    categories: @json($trendLabels),
-                    axisBorder: { show: false },
-                    axisTicks: { show: false },
-                    labels: { style: { colors: '#64748b', fontSize: '11px' } }
+                    categories: @json($chartDates),
+                    labels: { style: { colors: '#9ca3af' } }
                 },
                 yaxis: {
-                    labels: {
-                        formatter: (val) => '$' + val.toLocaleString(),
-                        style: { colors: '#64748b', fontSize: '11px' }
-                    }
+                    labels: { style: { colors: '#9ca3af' } }
                 },
                 fill: {
                     type: 'gradient',
-                    gradient: {
-                        shadeIntensity: 1,
-                        opacityFrom: 0.35,
-                        opacityTo: 0.02,
-                        stops: [0, 90, 100]
-                    }
-                },
-                tooltip: {
-                    y: { formatter: (val) => '$' + val.toLocaleString() }
+                    gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 90, 100] }
                 }
             };
+            var revChart = new ApexCharts(document.querySelector("#revenueSpendChart"), revOptions);
+            revChart.render();
 
-            const donutOptions = {
-                chart: {
-                    type: 'donut',
-                    height: 280,
-                    fontFamily: 'Inter, sans-serif'
-                },
-                colors: ['#4f46e5', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
-                series: @json($categoryCounts),
-                labels: @json($categoryLabels),
-                plotOptions: {
-                    pie: {
-                        donut: {
-                            size: '75%',
-                            labels: {
-                                show: true,
-                                name: { show: true, fontSize: '12px', color: '#64748b' },
-                                value: { show: true, fontSize: '20px', fontWeight: '900', color: '#0f172a' },
-                                total: {
-                                    show: true,
-                                    label: 'Products',
-                                    formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0)
-                                }
-                            }
-                        }
-                    }
-                },
-                legend: { position: 'bottom', horizontalAlign: 'center', fontSize: '11px' },
-                dataLabels: { enabled: false }
+            // Top Products Donut
+            var topOptions = {
+                series: @json($topProductsSeries),
+                labels: @json($topProductsLabels),
+                chart: { type: 'donut', height: 280, fontFamily: 'Inter, sans-serif' },
+                colors: ['#6366f1', '#8b5cf6', '#d946ef', '#f43f5e'],
+                dataLabels: { enabled: false },
+                legend: { position: 'bottom' }
             };
-
-            trendChartInstance = new ApexCharts(document.querySelector("#financial-trend-chart"), trendOptions);
-            trendChartInstance.render();
-
-            donutChartInstance = new ApexCharts(document.querySelector("#category-donut-chart"), donutOptions);
-            donutChartInstance.render();
-
-            // Listen for Livewire updates to dynamically redraw charts
-            window.addEventListener('timeframe-changed', (event) => {
-                // Defensively unpack Livewire custom event details
-                let data = event.detail;
-                if (Array.isArray(event.detail) && event.detail.length > 0) {
-                    data = event.detail[0];
-                } else if (event.detail && event.detail.data) {
-                    data = event.detail.data;
-                }
-
-                if (!data) return;
-
-                // Update trend chart atomically (series + options combined) to prevent race conditions
-                if (trendChartInstance && data.trendLabels && data.revenueTrend && data.spendTrend) {
-                    trendChartInstance.updateOptions({
-                        xaxis: { 
-                            categories: data.trendLabels 
-                        },
-                        series: [
-                            { name: 'Revenue', data: data.revenueTrend.map(Number) },
-                            { name: 'Spend', data: data.spendTrend.map(Number) }
-                        ]
-                    });
-                }
+            var topChart = new ApexCharts(document.querySelector("#topProductsChart"), topOptions);
+            topChart.render();
+            
+            // Re-render charts on timeframe change
+            Livewire.on('timeframe-changed', (data) => {
+                let eventData = data[0];
+                revChart.updateSeries([
+                    { name: 'Revenue', data: eventData.chartRevenue },
+                    { name: 'Spend', data: eventData.chartSpend }
+                ]);
+                revChart.updateOptions({
+                    xaxis: { categories: eventData.chartDates }
+                });
                 
-                // Update donut chart atomically (series + options combined) to prevent race conditions
-                if (donutChartInstance && data.categoryLabels && data.categoryCounts) {
-                    donutChartInstance.updateOptions({
-                        labels: data.categoryLabels,
-                        series: data.categoryCounts.map(Number)
-                    });
-                }
+                topChart.updateSeries(eventData.topProductsSeries);
+                topChart.updateOptions({
+                    labels: eventData.topProductsLabels
+                });
             });
         });
     </script>
+</div>
 </div>

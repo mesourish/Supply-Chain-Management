@@ -21,8 +21,8 @@ new class extends Component {
     public $source = '';
     public $notes = '';
     public $assigned_user_id = '';
-    
     // UI Modals & Actions
+    public $viewMode = 'list'; // 'kanban' or 'list'
     public $showCreateModal = false;
     public $showActivityModal = false;
     public $selectedLeadId = null;
@@ -95,7 +95,7 @@ new class extends Component {
         // Check if stage transitioned to Won, dynamically create customer first if not already done
         if ($this->editPipelineStage === 'won' && !$lead->customer_id) {
             $customer = Customer::create([
-                'name' => $this->editContactName,
+                'name' => $this->editCompanyName ?: $this->editContactName,
                 'contact_person' => $this->editContactName,
                 'email' => $this->editEmail,
                 'phone' => $this->editPhone,
@@ -121,7 +121,7 @@ new class extends Component {
 
         $this->selectedLead = $lead->load(['assignedUser', 'activities.user']);
         $this->isEditingDetails = false;
-        session()->flash('message', 'Lead details updated successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Lead details updated successfully.');
     }
 
     public function deleteLead($id)
@@ -129,7 +129,7 @@ new class extends Component {
         $lead = CrmLead::findOrFail($id);
         $lead->delete();
         $this->showDetailsModal = false;
-        session()->flash('message', 'Lead deleted successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Lead deleted successfully.');
     }
 
     public function getLeadsList()
@@ -190,7 +190,7 @@ new class extends Component {
         ]);
 
         $this->showCreateModal = false;
-        session()->flash('message', 'Lead added to pipeline successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Lead added to pipeline successfully.');
     }
 
     public function moveStage($id, $newStage)
@@ -211,7 +211,7 @@ new class extends Component {
         // Auto convert to Customer if Won
         if ($newStage === 'won' && !$lead->customer_id) {
             $customer = Customer::create([
-                'name' => $lead->contact_name,
+                'name' => $lead->company_name ?: $lead->contact_name,
                 'contact_person' => $lead->contact_name,
                 'email' => $lead->email,
                 'phone' => $lead->phone,
@@ -220,7 +220,7 @@ new class extends Component {
             $lead->update(['customer_id' => $customer->id]);
         }
 
-        session()->flash('message', 'Lead pipeline stage moved successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Lead pipeline stage moved successfully.');
     }
 
     public function openActivityModal($id)
@@ -249,7 +249,7 @@ new class extends Component {
         ]);
 
         $this->showActivityModal = false;
-        session()->flash('message', 'Pipeline interaction activity logged successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Pipeline interaction activity logged successfully.');
     }
 
     public function convertToQuote($leadId)
@@ -259,7 +259,7 @@ new class extends Component {
         // Auto convert to customer first if not already done
         if (!$lead->customer_id) {
             $customer = Customer::create([
-                'name' => $lead->contact_name,
+                'name' => $lead->company_name ?: $lead->contact_name,
                 'contact_person' => $lead->contact_name,
                 'email' => $lead->email,
                 'phone' => $lead->phone,
@@ -278,7 +278,7 @@ new class extends Component {
             'total_amount' => $lead->deal_value,
         ]);
 
-        session()->flash('message', "Lead converted to Sales Quote successfully: Ref {$quotation->reference_no}");
+        $this->dispatch('toast', type: 'success', message:  "Lead converted to Sales Quote successfully: Ref {$quotation->reference_no}");
     }
 
     public function convertToCustomer($leadId)
@@ -286,16 +286,15 @@ new class extends Component {
         $lead = CrmLead::findOrFail($leadId);
         if (!$lead->customer_id) {
             $customer = Customer::create([
-                'name' => $lead->contact_name,
+                'name' => $lead->company_name ?: $lead->contact_name,
                 'contact_person' => $lead->contact_name,
                 'email' => $lead->email,
                 'phone' => $lead->phone,
-                'company_name' => $lead->company_name,
             ]);
             $lead->update(['customer_id' => $customer->id]);
-            session()->flash('message', "Lead successfully converted to Customer Profile: {$customer->name}!");
+            $this->dispatch('toast', type: 'success', message:  "Lead successfully converted to Customer Profile: {$customer->name}!");
         } else {
-            session()->flash('message', "Lead is already linked to a Customer Profile.");
+            $this->dispatch('toast', type: 'success', message:  "Lead is already linked to a Customer Profile.");
         }
     }
 };
@@ -304,11 +303,7 @@ new class extends Component {
 
 <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 py-8 space-y-8">
     
-    @if(session()->has('message'))
-        <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-xl shadow-sm font-semibold text-sm" role="alert">
-            {{ session('message') }}
-        </div>
-    @endif
+    
 
     <!-- Header Actions -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -316,9 +311,21 @@ new class extends Component {
             <h1 class="text-3xl font-black text-gray-900 tracking-tight">CRM Deal Pipeline</h1>
             <p class="text-xs text-gray-500 mt-1">Track customer leads, record dynamic interactions, assign weights, and trigger SCM supply orders.</p>
         </div>
-        <button type="button" wire:click="createLead" class="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-colors">
-            + New Lead Prospect
-        </button>
+        <div class="flex items-center gap-3">
+            <!-- View Toggle -->
+            <div class="bg-gray-100 p-1 rounded-xl flex items-center shadow-inner">
+                <button type="button" wire:click="$set('viewMode', 'list')" class="px-3 py-1.5 text-xs font-bold rounded-lg transition-colors {{ $viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
+                    List View
+                </button>
+                <button type="button" wire:click="$set('viewMode', 'kanban')" class="px-3 py-1.5 text-xs font-bold rounded-lg transition-colors {{ $viewMode === 'kanban' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
+                    Kanban Board
+                </button>
+            </div>
+            
+            <button type="button" wire:click="createLead" class="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-colors">
+                + New Lead Prospect
+            </button>
+        </div>
     </div>
 
     <!-- Pipeline Analytics Metrics -->
@@ -337,12 +344,12 @@ new class extends Component {
         <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-150 relative overflow-hidden">
             <div class="absolute bottom-0 left-0 right-0 h-1 bg-indigo-500"></div>
             <span class="text-xs text-gray-400 font-extrabold uppercase">Active Pipeline</span>
-            <h3 class="text-2xl font-black text-gray-900 font-mono mt-2">${{ number_format($totalPipeline, 2) }}</h3>
+            <h3 class="text-2xl font-black text-gray-900 font-mono mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($totalPipeline, 2) }}</h3>
         </div>
         <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-150 relative overflow-hidden">
             <div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500"></div>
             <span class="text-xs text-gray-400 font-extrabold uppercase">Weighted Pipeline</span>
-            <h3 class="text-2xl font-black text-gray-900 font-mono mt-2">${{ number_format($weightedPipeline, 2) }}</h3>
+            <h3 class="text-2xl font-black text-gray-900 font-mono mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($weightedPipeline, 2) }}</h3>
         </div>
         <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-150 relative overflow-hidden">
             <div class="absolute bottom-0 left-0 right-0 h-1 bg-sky-500"></div>
@@ -356,6 +363,7 @@ new class extends Component {
         </div>
     </div>
 
+    @if($viewMode === 'kanban')
     <!-- Kanban Responsive Horizontally Scrollable Board -->
     <div class="flex overflow-x-auto gap-6 pb-6 select-none scrollbar-thin" style="scrollbar-width: thin; -webkit-overflow-scrolling: touch;">
         
@@ -387,7 +395,7 @@ new class extends Component {
                         <h4 class="text-sm font-black text-gray-900">{{ $stageVal['name'] }}</h4>
                         <span class="text-[10px] text-gray-400 font-bold font-mono">{{ $stageLeads->count() }} deals</span>
                     </div>
-                    <span class="text-xs font-black {{ $stageVal['text'] }} font-mono">${{ number_format($stageTotal, 0) }}</span>
+                    <span class="text-xs font-black {{ $stageVal['text'] }} font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($stageTotal, 0) }}</span>
                 </div>
 
                 <!-- Column Cards list -->
@@ -414,7 +422,7 @@ new class extends Component {
                             <!-- Deal Value -->
                             <div class="mt-3 flex items-baseline justify-between">
                                 <span class="text-[10px] text-gray-400 font-bold uppercase">Deal value:</span>
-                                <span class="text-xs font-mono font-black text-gray-900">${{ number_format($lead->deal_value, 2) }}</span>
+                                <span class="text-xs font-mono font-black text-gray-900">{{ setting('currency_symbol', '$') }}{{ number_format($lead->deal_value, 2) }}</span>
                             </div>
 
                             <!-- Actions Row -->
@@ -462,10 +470,90 @@ new class extends Component {
                     @endforelse
                 </div>
             </div>
-
         @endforeach
-
     </div>
+    @else
+    <!-- List View -->
+    <div class="bg-white rounded-3xl shadow-sm border border-gray-150 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-gray-600">
+                <thead class="bg-gray-50/50 text-xs text-gray-400 font-extrabold uppercase tracking-wider">
+                    <tr>
+                        <th class="px-6 py-4 border-b border-gray-100">Prospect / Company</th>
+                        <th class="px-6 py-4 border-b border-gray-100">Stage</th>
+                        <th class="px-6 py-4 border-b border-gray-100">Value</th>
+                        <th class="px-6 py-4 border-b border-gray-100">Probability</th>
+                        <th class="px-6 py-4 border-b border-gray-100">Rep</th>
+                        <th class="px-6 py-4 border-b border-gray-100 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                    @forelse($leads as $lead)
+                        <tr class="hover:bg-gray-50/50 transition-colors group cursor-pointer" wire:click="viewLead({{ $lead->id }})">
+                            <td class="px-6 py-4">
+                                <div class="font-extrabold text-gray-900 text-sm">{{ $lead->title }}</div>
+                                <div class="text-xs font-bold text-indigo-600 mt-0.5">{{ $lead->company_name ?: 'Private Prospect' }}</div>
+                                <div class="text-xs text-gray-400 mt-0.5">Contact: {{ $lead->contact_name }}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                @php
+                                    $stageNames = [
+                                        'new' => 'New Lead', 'contacted' => 'Contacted',
+                                        'proposal' => 'Proposal Sent', 'negotiation' => 'Negotiating',
+                                        'won' => 'Won 🎉', 'lost' => 'Lost'
+                                    ];
+                                    $badgeClr = 'bg-gray-100 text-gray-700 border-gray-200';
+                                    if ($lead->pipeline_stage === 'won') $badgeClr = 'bg-emerald-50 text-emerald-700 border-emerald-100';
+                                    elseif ($lead->pipeline_stage === 'lost') $badgeClr = 'bg-rose-50 text-rose-700 border-rose-100';
+                                    elseif ($lead->pipeline_stage === 'negotiation') $badgeClr = 'bg-amber-50 text-amber-700 border-amber-100';
+                                    elseif ($lead->pipeline_stage === 'proposal') $badgeClr = 'bg-indigo-50 text-indigo-700 border-indigo-100';
+                                @endphp
+                                <span class="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border {{ $badgeClr }}">
+                                    {{ $stageNames[$lead->pipeline_stage] ?? $lead->pipeline_stage }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 font-mono font-black text-gray-900 text-sm">
+                                {{ setting('currency_symbol', '$') }}{{ number_format($lead->deal_value, 2) }}
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                        <div class="h-full {{ $lead->deal_probability >= 80 ? 'bg-emerald-500' : ($lead->deal_probability >= 50 ? 'bg-amber-400' : 'bg-gray-400') }}" style="width: {{ $lead->deal_probability }}%"></div>
+                                    </div>
+                                    <span class="text-xs font-mono font-bold text-gray-500">{{ $lead->deal_probability }}%</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-xs font-medium text-gray-700">
+                                {{ $lead->assignedUser->name ?? '--' }}
+                            </td>
+                            <td class="px-6 py-4 text-right text-xs font-bold" onclick="event.stopPropagation()">
+                                <div class="flex items-center justify-end gap-3">
+                                    <button type="button" wire:click.stop="openActivityModal({{ $lead->id }})" class="text-gray-400 hover:text-indigo-600 transition-colors">
+                                        Log
+                                    </button>
+                                    @if($lead->pipeline_stage === 'won')
+                                        <button type="button" wire:click.stop="convertToQuote({{ $lead->id }})" class="text-emerald-600 hover:text-emerald-800 transition-colors">
+                                            + Quote
+                                        </button>
+                                    @endif
+                                    @if(!$lead->customer_id)
+                                        <button type="button" wire:click.stop="convertToCustomer({{ $lead->id }})" class="text-indigo-600 hover:text-indigo-800 transition-colors">
+                                            👤 Convert
+                                        </button>
+                                    @endif
+                                </div>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500 italic">No prospects found in the pipeline.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+    @endif
 
     <!-- Create Prospect Lead Modal -->
     @if($showCreateModal)
@@ -622,6 +710,8 @@ new class extends Component {
                             body {
                                 background: white !important;
                                 color: black !important;
+                                -webkit-print-color-adjust: exact !important;
+                                print-color-adjust: exact !important;
                             }
                             body * {
                                 visibility: hidden;
@@ -689,7 +779,7 @@ new class extends Component {
                                     </div>
                                     <div class="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
                                         <span class="text-[9px] text-slate-450 uppercase tracking-wider block font-extrabold">Est. Deal Value</span>
-                                        <span class="text-slate-800 text-sm font-black mt-0.5 block font-mono">${{ number_format($selectedLead->deal_value, 2) }}</span>
+                                        <span class="text-slate-800 text-sm font-black mt-0.5 block font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($selectedLead->deal_value, 2) }}</span>
                                     </div>
                                     <div class="bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
                                         <span class="text-[9px] text-slate-450 uppercase tracking-wider block font-extrabold">Email Address</span>

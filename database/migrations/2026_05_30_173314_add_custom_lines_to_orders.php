@@ -1,0 +1,40 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('quotation_items', function (Blueprint $table) {
+            $table->foreignId('product_id')->nullable()->change();
+            $table->string('description')->nullable()->after('product_id');
+        });
+
+        Schema::table('sales_order_items', function (Blueprint $table) {
+            $table->foreignId('product_id')->nullable()->change();
+            $table->string('description')->nullable()->after('product_id');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('sales_order_items', function (Blueprint $table) {
+            $table->dropColumn('description');
+            $table->foreignId('product_id')->nullable(false)->change();
+        });
+
+        Schema::table('quotation_items', function (Blueprint $table) {
+            $table->dropColumn('description');
+            $table->foreignId('product_id')->nullable(false)->change();
+        });
+    }
+};

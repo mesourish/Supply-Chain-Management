@@ -1,5 +1,5 @@
 @props([
-    'name',
+    'name' => '',
     'show' => false,
     'maxWidth' => '2xl'
 ])
@@ -15,6 +15,7 @@ $maxWidth = [
 @endphp
 
 <div
+    @if($attributes->has('wire:model')) x-modelable="show" {{ $attributes->wire('model') }} @endif
     x-data="{
         show: @js($show),
         focusables() {

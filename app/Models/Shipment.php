@@ -19,6 +19,8 @@ class Shipment extends Model
         return $this->belongsTo(SalesOrder::class);
     }
 
+
+
     public function vehicle()
     {
         return $this->belongsTo(Vehicle::class);

@@ -72,6 +72,7 @@ new class extends Component {
 
     public function editReceivable($id)
     {
+        $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         $ar = AccountReceivable::findOrFail($id);
         $this->receivableId = $ar->id;
         $this->receivableAmount = $ar->amount;
@@ -107,14 +108,14 @@ new class extends Component {
 
         $this->showReceivableModal = false;
         $this->loadLedger();
-        session()->flash('message', 'Accounts Receivable updated successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Accounts Receivable updated successfully.');
     }
 
     public function deleteReceivable($id)
     {
         AccountReceivable::findOrFail($id)->delete();
         $this->loadLedger();
-        session()->flash('message', 'Receivable deleted successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Receivable deleted successfully.');
     }
 
     // Payment Logging
@@ -162,7 +163,7 @@ new class extends Component {
 
         $this->showPaymentModal = false;
         $this->loadLedger();
-        session()->flash('message', 'Customer payment recorded successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Customer payment recorded successfully.');
     }
 
     // Payment Certificate Actions
@@ -220,12 +221,14 @@ new class extends Component {
 }; ?>
 
 <div>
-    @if($previewMode)
+    @if($previewCertMode)
         <style>
             @media print {
                 body {
                     background: white !important;
                     color: black !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
                 body * {
                     visibility: hidden;
@@ -269,11 +272,7 @@ new class extends Component {
     <div class="py-12">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-8">
             
-            @if(session()->has('message'))
-                <div class="no-print bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-xl shadow-sm font-semibold text-sm" role="alert">
-                    {{ session('message') }}
-                </div>
-            @endif
+            
 
             @if(!$previewCertMode)
                 <!-- Premium Profile Section Grid -->
@@ -367,7 +366,7 @@ new class extends Component {
 
                             <div class="border-t border-white/10 pt-4 flex flex-wrap items-center justify-between text-xs text-indigo-200/80 font-medium">
                                 <div>Ledger validated with 0 discrepancies</div>
-                                <div class="font-mono">Created at: {{ $customer->created_at->format('M d, Y') }}</div>
+                                <div class="font-mono">Created at: {{ $customer->created_at->format(setting('date_format', 'Y-m-d')) }}</div>
                             </div>
                         </div>
                     </div>
@@ -413,7 +412,7 @@ new class extends Component {
                                             @foreach($customer->salesOrders as $order)
                                                 <tr class="hover:bg-gray-50/20 transition-colors text-sm">
                                                     <td class="px-4 py-3.5 whitespace-nowrap font-bold text-gray-900">SO-{{ $order->id }}</td>
-                                                    <td class="px-4 py-3.5 whitespace-nowrap text-gray-500 font-semibold">{{ $order->created_at->format('M d, Y') }}</td>
+                                                    <td class="px-4 py-3.5 whitespace-nowrap text-gray-500 font-semibold">{{ $order->created_at->format(setting('date_format', 'Y-m-d')) }}</td>
                                                     <td class="px-4 py-3.5 whitespace-nowrap">
                                                         <span class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-blue-50 text-blue-700 border border-blue-100">
                                                             {{ $order->status }}
@@ -451,7 +450,7 @@ new class extends Component {
                                                 <tr class="hover:bg-gray-50/20 transition-colors text-sm">
                                                     <td class="px-4 py-3.5 whitespace-nowrap font-bold text-gray-900">INV-{{ $invoice->id }}</td>
                                                     <td class="px-4 py-3.5 whitespace-nowrap font-semibold text-gray-500">SO-{{ $invoice->sales_order_id }}</td>
-                                                    <td class="px-4 py-3.5 whitespace-nowrap text-gray-500 font-semibold">{{ $invoice->created_at->format('M d, Y') }}</td>
+                                                    <td class="px-4 py-3.5 whitespace-nowrap text-gray-500 font-semibold">{{ $invoice->created_at->format(setting('date_format', 'Y-m-d')) }}</td>
                                                     <td class="px-4 py-3.5 whitespace-nowrap">
                                                         <span class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-green-50 text-green-700 border border-green-100">
                                                             {{ $invoice->status }}
@@ -653,7 +652,7 @@ new class extends Component {
                                                 <tr class="hover:bg-gray-50/20 transition-colors">
                                                     <td class="px-4 py-3.5 whitespace-nowrap font-bold text-gray-900">RMA-{{ $rma->id }}</td>
                                                     <td class="px-4 py-3.5 whitespace-nowrap font-semibold text-gray-500">SO-{{ $rma->sales_order_id }}</td>
-                                                    <td class="px-4 py-3.5 whitespace-nowrap text-gray-500 font-semibold">{{ $rma->created_at->format('M d, Y') }}</td>
+                                                    <td class="px-4 py-3.5 whitespace-nowrap text-gray-500 font-semibold">{{ $rma->created_at->format(setting('date_format', 'Y-m-d')) }}</td>
                                                     <td class="px-4 py-3.5 whitespace-nowrap">
                                                         <span class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-amber-50 text-amber-700 border border-amber-100">
                                                             {{ $rma->status }}
@@ -727,7 +726,8 @@ new class extends Component {
                                     <div class="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-50/80">
                                         <div class="text-base font-extrabold text-indigo-950">{{ setting('website_name', 'SCM ERP Corporate Office') }}</div>
                                         <div class="text-xs text-indigo-900/70 mt-1 font-medium space-y-1">
-                                            <div>Authorized Representative: {{ auth()->user()->name }}</div>
+                                            <p class="italic leading-relaxed">{!! nl2br(e(setting('company_location', 'Corporate Logistics, Warehousing & Supply Chain Operations Hub.\nJebel Ali Free Zone, Dubai, United Arab Emirates'))) !!}</p>
+                                            <div class="mt-2 pt-2 border-t border-indigo-100">Authorized Representative: {{ auth()->user()->name }}</div>
                                             <div>Designation: {{ auth()->user()->can('manage users') ? 'System Administrator' : 'Operations Manager' }}</div>
                                             <div>Status Check: Payment History Validated</div>
                                         </div>
@@ -805,7 +805,7 @@ new class extends Component {
                             <div class="flex flex-col sm:flex-row justify-between items-end pt-8 border-t border-dashed border-gray-200 mt-12 gap-8">
                                 <div class="text-xs text-gray-400 space-y-1">
                                     <div class="font-bold uppercase tracking-widest text-[9px]">Validation Notice</div>
-                                    <div>This document is automatically validated by the SCM ERP financial core ledger.</div>
+                                    <div>This document is automatically validated by the {{ setting('website_name', 'SCM ERP') }} financial core ledger.</div>
                                     <div>Verification Ref: {{ substr(md5($certificateNumber . $this->selectedTotal), 0, 12) }}</div>
                                 </div>
                                 <div class="text-center sm:text-right w-48 border-t border-gray-400 pt-3">

@@ -29,7 +29,9 @@ new class extends Component {
     {
         $this->validate();
 
-        Supplier::updateOrCreate(
+        $isNew = is_null($this->supplierId);
+
+        $supplier = Supplier::updateOrCreate(
             ['id' => $this->supplierId],
             [
                 'name' => $this->name,
@@ -42,12 +44,47 @@ new class extends Component {
             ]
         );
 
+        if ($isNew) {
+            // Auto-create default Address
+            if (!empty($this->address)) {
+                $supplier->addresses()->create([
+                    'type' => 'billing',
+                    'title' => 'Headquarters',
+                    'address_line_1' => $this->address,
+                    'is_default_billing' => true,
+                    'is_default_shipping' => true,
+                ]);
+            }
+
+            // Auto-create default Contact Person
+            if (!empty($this->contact_person) || !empty($this->email) || !empty($this->phone)) {
+                $supplier->contactPersons()->create([
+                    'name' => $this->contact_person ?: 'Primary Contact',
+                    'email' => $this->email,
+                    'phone' => $this->phone,
+                    'is_primary' => true,
+                    'designation' => 'Main Contact',
+                ]);
+            }
+        } else {
+            // If editing, try to update the primary contact/address if they exist
+            $primaryContact = $supplier->contactPersons()->where('is_primary', true)->first();
+            if ($primaryContact) {
+                $primaryContact->update([
+                    'name' => $this->contact_person ?: $primaryContact->name,
+                    'email' => $this->email ?: $primaryContact->email,
+                    'phone' => $this->phone ?: $primaryContact->phone,
+                ]);
+            }
+        }
+
         $this->resetInputFields();
-        session()->flash('message', $this->supplierId ? 'Supplier Updated Successfully.' : 'Supplier Created Successfully.');
+        $this->dispatch('toast', type: 'success', message:  $this->supplierId ? 'Supplier Updated Successfully.' : 'Supplier Created Successfully.');
     }
 
     public function edit($id)
     {
+        $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         $supplier = Supplier::findOrFail($id);
         $this->supplierId = $id;
         $this->name = $supplier->name;
@@ -63,7 +100,7 @@ new class extends Component {
     public function delete($id)
     {
         Supplier::find($id)->delete();
-        session()->flash('message', 'Supplier Deleted Successfully.');
+        $this->dispatch('toast', type: 'success', message:  'Supplier Deleted Successfully.');
     }
 
     public function resetInputFields()
@@ -92,11 +129,7 @@ new class extends Component {
         <div class="p-6 text-gray-900">
             <h2 class="text-2xl font-semibold mb-4">{{ $isEditing ? 'Edit Supplier' : 'Create Supplier' }}</h2>
 
-            @if (session()->has('message'))
-                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('message') }}</span>
-                </div>
-            @endif
+            
 
             <form wire:submit="save">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -182,6 +215,7 @@ new class extends Component {
                                     @endif
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <a href="{{ route('suppliers.show', $supplier->id) }}" wire:navigate class="text-blue-600 hover:text-blue-900 mr-3">Manage</a>
                                     <button wire:click="edit({{ $supplier->id }})" class="text-indigo-600 hover:text-indigo-900 mr-3">Edit</button>
                                     <button wire:click="delete({{ $supplier->id }})" class="text-red-600 hover:text-red-900" wire:confirm="Are you sure?">Delete</button>
                                 </td>

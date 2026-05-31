@@ -4,6 +4,7 @@ use function Livewire\Volt\{state, mount, with, usesFileUploads};
 use App\Models\Expense;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
+use App\Models\SystemConstant;
 
 usesFileUploads();
 
@@ -44,6 +45,7 @@ mount(function () {
 
 with(fn () => [
     'expenses' => Expense::with(['purchaseOrder', 'supplier'])->latest()->paginate(10),
+    'categories' => SystemConstant::where('type', 'expense_category')->where('is_active', true)->orderBy('name')->get(),
 ]);
 
 $save = function () {
@@ -75,7 +77,7 @@ $save = function () {
     Expense::updateOrCreate(['id' => $this->expenseId], $data);
 
     $this->resetInputFields();
-    session()->flash('message', $this->expenseId ? 'Expense Updated Successfully.' : 'Expense Logged Successfully.');
+    $this->dispatch('toast', type: 'success', message:  $this->expenseId ? 'Expense Updated Successfully.' : 'Expense Logged Successfully.');
 };
 
 $edit = function ($id) {
@@ -95,7 +97,7 @@ $edit = function ($id) {
 $delete = function ($id) {
     if (!auth()->user()->can('delete expenses')) abort(403);
     Expense::find($id)->delete();
-    session()->flash('message', 'Expense Deleted Successfully.');
+    $this->dispatch('toast', type: 'success', message:  'Expense Deleted Successfully.');
 };
 
 $resetInputFields = function () {
@@ -118,11 +120,7 @@ $resetInputFields = function () {
         <div class="p-6 text-gray-900">
             <h2 class="text-2xl font-semibold mb-4">{{ $isEditing ? 'Edit Expense' : 'Log New Expense' }}</h2>
 
-            @if (session()->has('message'))
-                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('message') }}</span>
-                </div>
-            @endif
+            
 
             <form wire:submit.prevent="save">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -134,12 +132,10 @@ $resetInputFields = function () {
                     <div>
                         <x-input-label for="category" value="Category *" />
                         <select wire:model="category" id="category" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm" required>
-                            <option value="Miscellaneous">Miscellaneous</option>
-                            <option value="Shipping & Logistics">Shipping & Logistics</option>
-                            <option value="Customs & Duty">Customs & Duty</option>
-                            <option value="Office Supplies">Office Supplies</option>
-                            <option value="Travel">Travel</option>
-                            <option value="Software/IT">Software/IT</option>
+                            <option value="">-- Select Category --</option>
+                            @foreach($categories as $cat)
+                                <option value="{{ $cat->name }}">{{ $cat->name }}</option>
+                            @endforeach
                         </select>
                         <x-input-error :messages="$errors->get('category')" class="mt-2" />
                     </div>
@@ -217,7 +213,7 @@ $resetInputFields = function () {
                         @forelse ($expenses as $expense)
                             <tr>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {{ \Carbon\Carbon::parse($expense->expense_date)->format('M d, Y') }}
+                                    {{ \Carbon\Carbon::parse($expense->expense_date)->format(setting('date_format', 'Y-m-d')) }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">

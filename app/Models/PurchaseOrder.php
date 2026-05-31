@@ -9,11 +9,41 @@ class PurchaseOrder extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['supplier_id', 'status', 'total_amount'];
+    protected $fillable = [
+        'supplier_id', 
+        'status', 
+        'subtotal',
+        'gst_type',
+        'gst_percentage',
+        'gst_amount',
+        'total_amount',
+        'remarks',
+        'terms_and_conditions',
+        'contact_person_id',
+        'billing_address_id',
+        'shipping_address_id',
+    ];
 
     public function supplier()
     {
         return $this->belongsTo(Supplier::class);
+    }
+
+
+
+    public function contactPerson()
+    {
+        return $this->belongsTo(ContactPerson::class);
+    }
+
+    public function billingAddress()
+    {
+        return $this->belongsTo(Address::class, 'billing_address_id');
+    }
+
+    public function shippingAddress()
+    {
+        return $this->belongsTo(Address::class, 'shipping_address_id');
     }
 
     public function items()

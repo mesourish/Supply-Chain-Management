@@ -134,7 +134,7 @@ new class extends Component {
         $st = StockTake::findOrFail($id);
         $uncounted = $st->items()->where('status', 'pending')->count();
         if ($uncounted > 0) {
-            session()->flash('error', "{$uncounted} items still pending count. Count all items first.");
+            $this->dispatch('toast', type: 'error', message:  "{$uncounted} items still pending count. Count all items first.");
             return;
         }
         $st->update(['status' => 'pending_approval']);
@@ -227,12 +227,7 @@ new class extends Component {
             ✓ {{ session('success') }}
         </div>
     @endif
-    @if(session()->has('error'))
-        <div x-data="{show:true}" x-show="show" x-init="setTimeout(()=>show=false,5000)"
-             class="fixed top-4 right-4 z-50 flex items-center gap-2 bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl text-sm">
-            ✗ {{ session('error') }}
-        </div>
-    @endif
+    
 
     {{-- Page header --}}
     <div class="bg-white border-b border-gray-200 px-6 py-4">

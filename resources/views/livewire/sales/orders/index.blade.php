@@ -35,11 +35,12 @@ new class extends Component {
         );
 
         $this->resetInputFields();
-        session()->flash('message', $this->orderId ? 'SO Updated Successfully.' : 'SO Created Successfully.');
+        $this->dispatch('toast', type: 'success', message:  $this->orderId ? 'SO Updated Successfully.' : 'SO Created Successfully.');
     }
 
     public function edit($id)
     {
+        $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         $order = SalesOrder::findOrFail($id);
         $this->orderId = $id;
         $this->customer_id = $order->customer_id;
@@ -51,7 +52,7 @@ new class extends Component {
     public function delete($id)
     {
         SalesOrder::find($id)->delete();
-        session()->flash('message', 'SO Deleted Successfully.');
+        $this->dispatch('toast', type: 'success', message:  'SO Deleted Successfully.');
     }
 
     public function resetInputFields()
@@ -66,7 +67,7 @@ new class extends Component {
     public function with()
     {
         return [
-            'orders' => SalesOrder::with('customer')->latest()->paginate(10),
+            'orders' => SalesOrder::with(['customer'])->latest()->paginate(10),
             'customers' => Customer::all(),
         ];
     }
@@ -77,11 +78,7 @@ new class extends Component {
         <div class="p-6 text-gray-900">
             <h2 class="text-2xl font-semibold mb-4">{{ $isEditing ? 'Edit Sales Order' : 'Create Sales Order' }}</h2>
 
-            @if (session()->has('message'))
-                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                    <span class="block sm:inline">{{ session('message') }}</span>
-                </div>
-            @endif
+            
 
             <form wire:submit="save">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -95,6 +92,7 @@ new class extends Component {
                         </select>
                         <x-input-error :messages="$errors->get('customer_id')" class="mt-2" />
                     </div>
+
                     <div>
                         <x-input-label for="status" value="Status" />
                         <select wire:model="status" id="status" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm" required>

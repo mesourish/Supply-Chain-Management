@@ -21,7 +21,7 @@ new class extends Component {
 
     public function with()
     {
-        $query = InventoryTransaction::with(['product', 'fromBin.warehouse', 'toBin.warehouse', 'user'])
+        $query = InventoryTransaction::with(['product', 'fromBin.warehouse', 'toBin.warehouse', 'user', 'grn.purchaseOrder.supplier'])
             ->latest();
 
         if ($this->filter_product_id) {
@@ -80,7 +80,11 @@ new class extends Component {
                             <option value="purchase_order">PO Received</option>
                             <option value="sales_order">SO Shipped</option>
                             <option value="rma_return">RMA Return</option>
-                            <option value="project_allocation">Project Reserved</option>
+                            <option value="sales_order_reservation">Sales Order Reserved</option>
+                            <option value="supplier_to_warehouse">Supplier to Warehouse</option>
+                            <option value="warehouse_to_warehouse">Warehouse to Warehouse</option>
+                            <option value="return_to_supplier">Return to Supplier</option>
+                            <option value="user_pickup">User Pickup</option>
                         </select>
                     </div>
                 </div>
@@ -122,6 +126,10 @@ new class extends Component {
                                             'purchase_order' => 'bg-amber-50 text-amber-700 border-amber-100',
                                             'sales_order' => 'bg-teal-50 text-teal-700 border-teal-100',
                                             'rma_return' => 'bg-purple-50 text-purple-700 border-purple-100',
+                                            'supplier_to_warehouse' => 'bg-emerald-50 text-emerald-700 border-emerald-100',
+                                            'warehouse_to_warehouse' => 'bg-blue-50 text-blue-700 border-blue-100',
+                                            'return_to_supplier' => 'bg-orange-50 text-orange-700 border-orange-100',
+                                            'user_pickup' => 'bg-pink-50 text-pink-700 border-pink-100',
                                             default => 'bg-gray-50 text-gray-600 border-gray-100'
                                         };
                                         $label = match($txn->type) {
@@ -131,6 +139,10 @@ new class extends Component {
                                             'purchase_order' => 'PO INBOUND',
                                             'sales_order' => 'SO FULFILL',
                                             'rma_return' => 'RMA RETURN',
+                                            'supplier_to_warehouse' => 'SUPPLIER TO WAREHOUSE',
+                                            'warehouse_to_warehouse' => 'WAREHOUSE TRANSFER',
+                                            'return_to_supplier' => 'RETURN TO SUPPLIER',
+                                            'user_pickup' => 'USER PICKUP',
                                             default => strtoupper($txn->type)
                                         };
                                     @endphp
@@ -140,9 +152,10 @@ new class extends Component {
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm">
                                     @php
-                                        $isNegative = in_array($txn->type, ['adjustment_out', 'out', 'sales_order']);
-                                        $colorClass = $isNegative ? 'text-rose-600' : ($txn->type === 'transfer' ? 'text-indigo-600' : 'text-green-600');
-                                        $prefix = $isNegative ? '-' : ($txn->type === 'transfer' ? '⇅' : '+');
+                                        $isNegative = in_array($txn->type, ['adjustment_out', 'out', 'sales_order', 'return_to_supplier', 'user_pickup']);
+                                        $isTransfer = in_array($txn->type, ['transfer', 'warehouse_to_warehouse']);
+                                        $colorClass = $isNegative ? 'text-rose-600' : ($isTransfer ? 'text-indigo-600' : 'text-green-600');
+                                        $prefix = $isNegative ? '-' : ($isTransfer ? '⇅' : '+');
                                     @endphp
                                     <span class="font-bold {{ $colorClass }}">
                                         {{ $prefix }} {{ $txn->quantity }}
@@ -152,6 +165,9 @@ new class extends Component {
                                     @if($txn->fromBin)
                                         <div class="font-medium text-gray-700">{{ $txn->fromBin->warehouse->name }}</div>
                                         <div class="text-xs text-gray-400 font-mono">{{ $txn->fromBin->full_label }}</div>
+                                    @elseif($txn->reference_type === 'App\Models\GoodsReceiptNote' && $txn->grn)
+                                        <div class="font-medium text-emerald-700">{{ $txn->grn->purchaseOrder->supplier->name ?? 'Supplier' }}</div>
+                                        <div class="text-xs text-emerald-500 font-mono">External Supplier</div>
                                     @else
                                         <span class="text-gray-300 font-mono">-</span>
                                     @endif
@@ -166,8 +182,12 @@ new class extends Component {
                                 </td>
                                 <td class="px-6 py-4 text-sm text-gray-500 max-w-xs">
                                     @if($txn->reference_type)
+                                        @php
+                                            $refName = class_basename($txn->reference_type);
+                                            if($refName === 'GoodsReceiptNote') $refName = 'GRN';
+                                        @endphp
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 mb-1">
-                                            {{ $txn->reference_type }} #{{ $txn->reference_id }}
+                                            {{ $refName }} #{{ $txn->reference_id }}
                                         </span><br>
                                     @endif
                                     <div class="text-xs italic text-gray-600 truncate" title="{{ $txn->notes }}">

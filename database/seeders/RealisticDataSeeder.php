@@ -33,6 +33,31 @@ class RealisticDataSeeder extends Seeder
         $user = User::first() ?? User::factory()->create();
 
         // ──────────────────────────────────────────────────────────────
+        // 0. SYSTEM CONSTANTS
+        // ──────────────────────────────────────────────────────────────
+        DB::table('system_constants')->insert([
+            ['type' => 'product_category', 'name' => 'Raw Materials', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'product_category', 'name' => 'Electronics', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'product_category', 'name' => 'Machinery', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'product_category', 'name' => 'Tools & Hardware', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'product_category', 'name' => 'Safety Gear', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'product_category', 'name' => 'Chemicals', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            
+            ['type' => 'expense_category', 'name' => 'Miscellaneous', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'expense_category', 'name' => 'Shipping & Logistics', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'expense_category', 'name' => 'Customs & Duty', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'expense_category', 'name' => 'Office Supplies', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'expense_category', 'name' => 'Travel', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'expense_category', 'name' => 'Software/IT', 'value' => null, 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            
+            ['type' => 'gst_percentage', 'name' => '0% (Exempt)', 'value' => '0', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'gst_percentage', 'name' => '5%', 'value' => '5', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'gst_percentage', 'name' => '12%', 'value' => '12', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'gst_percentage', 'name' => '18%', 'value' => '18', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+            ['type' => 'gst_percentage', 'name' => '28%', 'value' => '28', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
+        ]);
+
+        // ──────────────────────────────────────────────────────────────
         // 1. SUPPLIERS  (real industrial/tech companies)
         // ──────────────────────────────────────────────────────────────
         $supplierData = [
@@ -229,11 +254,11 @@ class RealisticDataSeeder extends Seeder
             ['status' => 'online', 'lat' => 24.4539, 'lng' => 54.3773, 'veh_idx' => 2],
         ];
         foreach ($driverData as $idx => $d) {
-            $du = User::create([
-                'name' => $d['name'],
-                'email' => strtolower(str_replace(' ', '.', $d['name'])) . '@driver.erp',
-                'password' => bcrypt('password'),
-            ]);
+            $email = strtolower(str_replace(' ', '.', $d['name'])) . '@driver.erp';
+            $du = User::firstOrCreate(
+                ['email' => $email],
+                ['name' => $d['name'], 'password' => bcrypt('password')]
+            );
             $coord = $driverCoords[$idx] ?? ['status' => 'online', 'lat' => null, 'lng' => null, 'veh_idx' => null];
             DB::table('drivers')->insert([
                 'user_id' => $du->id,
@@ -489,21 +514,46 @@ class RealisticDataSeeder extends Seeder
         ];
 
         $poIds = [];
+        $grnAdded = false;
         foreach ($poDefs as $pd) {
-            $total = 0;
+            $subtotal = 0;
             foreach ($pd['items'] as $pi) {
-                $total += $pi['qty'] * $pi['price'];
+                $subtotal += $pi['qty'] * $pi['price'];
             }
+            
+            $gstPct = 5; // 5% GST
+            $gstAmt = $subtotal * ($gstPct / 100);
+            $total = $subtotal + $gstAmt;
 
             DB::table('purchase_orders')->insert([
-                'supplier_id' => $supplierIds[$pd['sup_idx']],
-                'status'      => $pd['status'],
-                'total_amount'=> $total,
-                'created_at'  => $now->copy()->subDays(rand(3, 25)),
-                'updated_at'  => $now,
+                'supplier_id'          => $supplierIds[$pd['sup_idx']],
+                'status'               => $pd['status'] === 'approved' ? 'received' : $pd['status'], // Set some to received to simulate stock
+                'subtotal'             => $subtotal,
+                'gst_type'             => 'exclusive',
+                'gst_percentage'       => $gstPct,
+                'gst_amount'           => $gstAmt,
+                'total_amount'         => $total,
+                'remarks'              => 'Generated by Realistic Data Seeder.',
+                'terms_and_conditions' => 'Standard 30 Days net. Delivery at site.',
+                'created_at'           => $now->copy()->subDays(rand(3, 25)),
+                'updated_at'           => $now,
             ]);
             $poId = DB::getPdo()->lastInsertId();
             $poIds[] = $poId;
+            
+            $isReceived = ($pd['status'] === 'approved'); // If it was approved, we'll mark as received to add inventory
+            
+            if ($isReceived) {
+                DB::table('goods_receipt_notes')->insert([
+                    'purchase_order_id' => $poId,
+                    'user_id'           => $user->id,
+                    'status'            => 'received',
+                    'notes'             => 'Full delivery received in good condition.',
+                    'created_at'        => $now,
+                    'updated_at'        => $now,
+                ]);
+                $grnId = DB::getPdo()->lastInsertId();
+            }
 
             foreach ($pd['items'] as $pi) {
                 DB::table('purchase_order_items')->insert([
@@ -511,10 +561,52 @@ class RealisticDataSeeder extends Seeder
                     'product_id'        => $productIds[$pi['prod_idx']],
                     'quantity'          => $pi['qty'],
                     'unit_price'        => $pi['price'],
-                    'received_quantity' => 0,   // NOT received
+                    'received_quantity' => $isReceived ? $pi['qty'] : 0,
                     'created_at'        => $now,
                     'updated_at'        => $now,
                 ]);
+                
+                if ($isReceived) {
+                    $prodId = $productIds[$pi['prod_idx']];
+                    $binId = $binIds[0] ?? 1;
+
+                    // Add to inventory transaction
+                    DB::table('inventory_transactions')->insert([
+                        'product_id'       => $prodId,
+                        'to_bin_id'        => $binId,
+                        'type'             => 'in',
+                        'quantity'         => $pi['qty'],
+                        'reference_type'   => 'App\Models\GoodsReceiptNote',
+                        'reference_id'     => $grnId,
+                        'user_id'          => $user->id,
+                        'notes'            => 'Received via GRN',
+                        'created_at'       => $now,
+                        'updated_at'       => $now,
+                    ]);
+                    
+                    // Update bin stock
+                    $existingBin = DB::table('bin_product_stock')
+                        ->where('warehouse_bin_id', $binId)
+                        ->where('product_id', $prodId)
+                        ->first();
+                        
+                    if ($existingBin) {
+                        DB::table('bin_product_stock')
+                            ->where('id', $existingBin->id)
+                            ->update([
+                                'quantity' => $existingBin->quantity + $pi['qty'],
+                                'updated_at' => $now
+                            ]);
+                    } else {
+                        DB::table('bin_product_stock')->insert([
+                            'warehouse_bin_id' => $binId,
+                            'product_id'       => $prodId,
+                            'quantity'         => $pi['qty'],
+                            'created_at'       => $now,
+                            'updated_at'       => $now,
+                        ]);
+                    }
+                }
             }
 
             // Account Payable for approved POs only
@@ -653,139 +745,24 @@ class RealisticDataSeeder extends Seeder
         }
 
         // ──────────────────────────────────────────────────────────────
-        // 12. PROJECTS  (linked to won leads + customers)
-        // ──────────────────────────────────────────────────────────────
-        $projectDefs = [
-            ['code'=>'PRJ-2026-ARMC-001', 'name'=>'Saudi Aramco GOSP-7 Instrumentation Upgrade',
-             'cust_idx'=>0, 'status'=>'active',  'start'=>'-10 days', 'end'=>'+180 days', 'budget'=>2100000,
-             'desc'=>'Full instrumentation and control system upgrade for GOSP-7 gas-oil separation plant.',
-             'milestones'=>[
-                 ['title'=>'Engineering Design Review',        'due'=>'+20 days',  'status'=>'completed'],
-                 ['title'=>'Vendor Document Submission',       'due'=>'+45 days',  'status'=>'pending'],
-                 ['title'=>'Material Delivery to Site',        'due'=>'+90 days',  'status'=>'pending'],
-                 ['title'=>'Installation & Commissioning',     'due'=>'+150 days', 'status'=>'pending'],
-                 ['title'=>'FAT / SAT Completion',             'due'=>'+170 days', 'status'=>'pending'],
-             ],
-             'materials'=>[
-                 ['prod_idx'=>0, 'qty'=>4,  'bin_idx'=>0],
-                 ['prod_idx'=>4, 'qty'=>8,  'bin_idx'=>1],
-                 ['prod_idx'=>5, 'qty'=>24, 'bin_idx'=>2],
-             ]],
-            ['code'=>'PRJ-2026-SABIC-002', 'name'=>'SABIC Ethylene Cracker DCS Migration',
-             'cust_idx'=>3, 'status'=>'active',  'start'=>'-5 days', 'end'=>'+240 days', 'budget'=>2500000,
-             'desc'=>'Legacy Honeywell TPS to 800xA DCS migration for Al Jubail ethylene cracker complex.',
-             'milestones'=>[
-                 ['title'=>'HAZOP Study Completion',           'due'=>'+30 days',  'status'=>'pending'],
-                 ['title'=>'DCS Architecture Approval',        'due'=>'+60 days',  'status'=>'pending'],
-                 ['title'=>'Hardware Procurement',             'due'=>'+90 days',  'status'=>'pending'],
-                 ['title'=>'Shadow Mode Testing',              'due'=>'+180 days', 'status'=>'pending'],
-                 ['title'=>'Cutover & Live Operation',         'due'=>'+240 days', 'status'=>'pending'],
-             ],
-             'materials'=>[
-                 ['prod_idx'=>1, 'qty'=>2,  'bin_idx'=>5],
-                 ['prod_idx'=>6, 'qty'=>40, 'bin_idx'=>6],
-                 ['prod_idx'=>9, 'qty'=>12, 'bin_idx'=>7],
-             ]],
-            ['code'=>'PRJ-2026-LT-003', 'name'=>'L&T MCC Panel Manufacturing – Phase 1',
-             'cust_idx'=>6, 'status'=>'planning', 'start'=>'+5 days', 'end'=>'+120 days', 'budget'=>1100000,
-             'desc'=>'Design and manufacture of 12 Motor Control Centre panels for L&T heavy engineering plant.',
-             'milestones'=>[
-                 ['title'=>'Schematic Design Approval',        'due'=>'+15 days',  'status'=>'pending'],
-                 ['title'=>'Component Procurement',            'due'=>'+40 days',  'status'=>'pending'],
-                 ['title'=>'Panel Assembly & Wiring',          'due'=>'+80 days',  'status'=>'pending'],
-                 ['title'=>'Factory Acceptance Test (FAT)',    'due'=>'+105 days', 'status'=>'pending'],
-                 ['title'=>'Dispatch to Site',                 'due'=>'+120 days', 'status'=>'pending'],
-             ],
-             'materials'=>[
-                 ['prod_idx'=>13,'qty'=>30,   'bin_idx'=>3],
-                 ['prod_idx'=>14,'qty'=>60,   'bin_idx'=>4],
-                 ['prod_idx'=>26,'qty'=>2000, 'bin_idx'=>8],
-             ]],
-        ];
-
-        $projectIdsList = [];
-        foreach ($projectDefs as $pd) {
-            DB::table('projects')->insert([
-                'name'        => $pd['name'],
-                'code'        => $pd['code'],
-                'customer_id' => $customerIds[$pd['cust_idx']],
-                'status'      => $pd['status'],
-                'start_date'  => $now->copy()->addDays(intval($pd['start']))->toDateString(),
-                'end_date'    => $now->copy()->addDays(intval($pd['end']))->toDateString(),
-                'budget'      => $pd['budget'],
-                'description' => $pd['desc'],
-                'created_at'  => $now->copy()->subDays(rand(3, 15)),
-                'updated_at'  => $now,
-            ]);
-            $projId = DB::getPdo()->lastInsertId();
-            $projectIdsList[$pd['code']] = $projId;
-
-            // Link invoices of this customer to this project if exists
-            if ($pd['code'] === 'PRJ-2026-ARMC-001') {
-                DB::table('invoices')
-                    ->join('sales_orders', 'invoices.sales_order_id', '=', 'sales_orders.id')
-                    ->where('sales_orders.customer_id', $customerIds[0])
-                    ->update(['invoices.project_id' => $projId]);
-            } elseif ($pd['code'] === 'PRJ-2026-SABIC-002') {
-                DB::table('invoices')
-                    ->join('sales_orders', 'invoices.sales_order_id', '=', 'sales_orders.id')
-                    ->where('sales_orders.customer_id', $customerIds[3])
-                    ->update(['invoices.project_id' => $projId]);
-            } elseif ($pd['code'] === 'PRJ-2026-LT-003') {
-                DB::table('invoices')
-                    ->join('sales_orders', 'invoices.sales_order_id', '=', 'sales_orders.id')
-                    ->where('sales_orders.customer_id', $customerIds[6])
-                    ->update(['invoices.project_id' => $projId]);
-            }
-
-            foreach ($pd['milestones'] as $ms) {
-                DB::table('project_milestones')->insert([
-                    'project_id'  => $projId,
-                    'title'       => $ms['title'],
-                    'description' => $ms['title'] . ' for ' . $pd['name'],
-                    'due_date'    => $now->copy()->addDays(intval($ms['due']))->toDateString(),
-                    'status'      => $ms['status'],
-                    'created_at'  => $now,
-                    'updated_at'  => $now,
-                ]);
-            }
-
-            foreach ($pd['materials'] as $mat) {
-                $binId = isset($binIds[$mat['bin_idx']]) ? $binIds[$mat['bin_idx']] : $binIds[0];
-                DB::table('project_material_requests')->insert([
-                    'project_id'          => $projId,
-                    'product_id'          => $productIds[$mat['prod_idx']],
-                    'warehouse_bin_id'    => $binId,
-                    'quantity_requested'  => $mat['qty'],
-                    'quantity_reserved'   => 0,
-                    'status'              => 'pending',
-                    'notes'               => 'Required for ' . $pd['name'],
-                    'created_at'          => $now,
-                    'updated_at'          => $now,
-                ]);
-            }
-        }
-
-        // ──────────────────────────────────────────────────────────────
         // 13. PURCHASE EXPENSES
         // ──────────────────────────────────────────────────────────────
         $expenseDefs = [
-            ['po_idx'=>0, 'cat'=>'Freight & Shipping',       'amt'=>8500,  'date'=>'-5 days',  'ref'=>'EXP-2026-001', 'note'=>'Air freight charges – Siemens PLC shipment from Munich to Dubai', 'proj_code'=>'PRJ-2026-ARMC-001'],
-            ['po_idx'=>1, 'cat'=>'Customs & Import Duty',    'amt'=>22000, 'date'=>'-8 days',  'ref'=>'EXP-2026-002', 'note'=>'UAE customs duty and clearance for Honeywell DCS equipment', 'proj_code'=>'PRJ-2026-SABIC-002'],
-            ['po_idx'=>3, 'cat'=>'Freight & Shipping',       'amt'=>4200,  'date'=>'-3 days',  'ref'=>'EXP-2026-003', 'note'=>'Sea freight – Schneider switchgear containers Rotterdam to Dubai', 'proj_code'=>'PRJ-2026-LT-003'],
-            ['po_idx'=>5, 'cat'=>'Freight & Shipping',       'amt'=>3800,  'date'=>'-12 days', 'ref'=>'EXP-2026-004', 'note'=>'Piping materials logistics from Parker USA warehouse to Houston port', 'proj_code'=>'PRJ-2026-ARMC-001'],
-            ['po_idx'=>7, 'cat'=>'Warehouse Handling',       'amt'=>1200,  'date'=>'-2 days',  'ref'=>'EXP-2026-005', 'note'=>'3M PPE goods receipt and warehousing charges – Dubai depot', 'proj_code'=>'PRJ-2026-SABIC-002'],
-            ['po_idx'=>0, 'cat'=>'Engineering Consultancy',  'amt'=>15000, 'date'=>'-20 days', 'ref'=>'EXP-2026-006', 'note'=>'Third-party Factory Acceptance Test (FAT) witness fee – Siemens Munich', 'proj_code'=>'PRJ-2026-ARMC-001'],
-            ['po_idx'=>1, 'cat'=>'Travel & Site Visit',      'amt'=>6800,  'date'=>'-15 days', 'ref'=>'EXP-2026-007', 'note'=>'Team travel – Honeywell vendor audit visit to Houston facility', 'proj_code'=>'PRJ-2026-SABIC-002'],
-            ['po_idx'=>null,'cat'=>'Software / IT',          'amt'=>9500,  'date'=>'-30 days', 'ref'=>'EXP-2026-008', 'note'=>'Annual AVEVA PDMS engineering software licence renewal', 'proj_code'=>null],
-            ['po_idx'=>null,'cat'=>'Office & Admin',         'amt'=>2100,  'date'=>'-7 days',  'ref'=>'EXP-2026-009', 'note'=>'Office supplies and stationery – Q2 2026 procurement', 'proj_code'=>null],
-            ['po_idx'=>2,  'cat'=>'Inspection & Testing',    'amt'=>5500,  'date'=>'-18 days', 'ref'=>'EXP-2026-010', 'note'=>'Third-party ATEX/IECEx certification testing for Emerson valves', 'proj_code'=>'PRJ-2026-ARMC-001'],
+            ['po_idx'=>0, 'cat'=>'Freight & Shipping',       'amt'=>8500,  'date'=>'-5 days',  'ref'=>'EXP-2026-001', 'note'=>'Air freight charges – Siemens PLC shipment from Munich to Dubai'],
+            ['po_idx'=>1, 'cat'=>'Customs & Import Duty',    'amt'=>22000, 'date'=>'-8 days',  'ref'=>'EXP-2026-002', 'note'=>'UAE customs duty and clearance for Honeywell DCS equipment'],
+            ['po_idx'=>3, 'cat'=>'Freight & Shipping',       'amt'=>4200,  'date'=>'-3 days',  'ref'=>'EXP-2026-003', 'note'=>'Sea freight – Schneider switchgear containers Rotterdam to Dubai'],
+            ['po_idx'=>5, 'cat'=>'Freight & Shipping',       'amt'=>3800,  'date'=>'-12 days', 'ref'=>'EXP-2026-004', 'note'=>'Piping materials logistics from Parker USA warehouse to Houston port'],
+            ['po_idx'=>7, 'cat'=>'Warehouse Handling',       'amt'=>1200,  'date'=>'-2 days',  'ref'=>'EXP-2026-005', 'note'=>'3M PPE goods receipt and warehousing charges – Dubai depot'],
+            ['po_idx'=>0, 'cat'=>'Engineering Consultancy',  'amt'=>15000, 'date'=>'-20 days', 'ref'=>'EXP-2026-006', 'note'=>'Third-party Factory Acceptance Test (FAT) witness fee – Siemens Munich'],
+            ['po_idx'=>1, 'cat'=>'Travel & Site Visit',      'amt'=>6800,  'date'=>'-15 days', 'ref'=>'EXP-2026-007', 'note'=>'Team travel – Honeywell vendor audit visit to Houston facility'],
+            ['po_idx'=>null,'cat'=>'Software / IT',          'amt'=>9500,  'date'=>'-30 days', 'ref'=>'EXP-2026-008', 'note'=>'Annual AVEVA PDMS engineering software licence renewal'],
+            ['po_idx'=>null,'cat'=>'Office & Admin',         'amt'=>2100,  'date'=>'-7 days',  'ref'=>'EXP-2026-009', 'note'=>'Office supplies and stationery – Q2 2026 procurement'],
+            ['po_idx'=>2,  'cat'=>'Inspection & Testing',    'amt'=>5500,  'date'=>'-18 days', 'ref'=>'EXP-2026-010', 'note'=>'Third-party ATEX/IECEx certification testing for Emerson valves'],
         ];
 
         foreach ($expenseDefs as $ed) {
             DB::table('expenses')->insert([
                 'purchase_order_id' => isset($ed['po_idx']) && $ed['po_idx'] !== null ? $poIds[$ed['po_idx']] : null,
-                'project_id'        => isset($ed['proj_code']) && isset($projectIdsList[$ed['proj_code']]) ? $projectIdsList[$ed['proj_code']] : null,
                 'supplier_id'       => null,
                 'category'          => $ed['cat'],
                 'amount'            => $ed['amt'],
@@ -812,7 +789,6 @@ class RealisticDataSeeder extends Seeder
         $this->command->info('    RFQs: '       . count($rfqDefs));
         $this->command->info('    Purchase Orders: ' . count($poDefs) . ' (NOT received — inventory log stays clean)');
         $this->command->info('    Sales Orders: '    . count($soDefs));
-        $this->command->info('    Projects: '        . count($projectDefs));
         $this->command->info('    Expenses: '        . count($expenseDefs));
     }
 }

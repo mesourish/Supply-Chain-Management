@@ -108,6 +108,8 @@ new class extends Component {
                 body {
                     background: white !important;
                     color: black !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
                 body * {
                     visibility: hidden;
