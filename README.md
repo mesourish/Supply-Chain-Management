@@ -1,7 +1,7 @@
 # SCM ERP (Supply Chain Management System)
 
 ## ℹ️ About
-A robust, enterprise-grade Supply Chain Management (SCM) ERP built with **Laravel 11**, **Livewire Volt**, **Alpine.js**, and **Tailwind CSS**. This open-source software provides an end-to-end operational backbone for B2B enterprises, seamlessly connecting Customer Relationship Management (CRM), Sales Quotations, Project Milestones, Procurement (RFQs), multi-zone Warehouse Bins, Fleet Logistics, and Financial General Ledgers.
+A robust, enterprise-grade Supply Chain Management (SCM) ERP built with **Laravel 11**, **Livewire Volt**, **Alpine.js**, and **Tailwind CSS**. This open-source software provides an end-to-end operational backbone for B2B enterprises, seamlessly connecting Customer Relationship Management (CRM), Sales Quotations, Sales Orders, Procurement (RFQs), multi-zone Warehouse Bins, Fleet Logistics, and Financial Ledgers.
 
 ---
 
@@ -17,7 +17,7 @@ Below is an interactive, CSS-animated data pipeline representing how operational
 
 ## 🎨 SCM Ecosystem Visualizer
 
-This system operates as a unified, data-driven supply chain where customer demand directly triggers physical inventory movements, supplier acquisitions, and financial logs. The diagram below illustrates how all entities interact chronologically across modules.
+This system operates as a unified, data-driven supply chain where customer demand directly triggers physical inventory movements, supplier acquisitions, and financial logs. The diagram below illustrates how all entities interact chronologically across active modules.
 
 ```mermaid
 graph TD
@@ -28,8 +28,6 @@ graph TD
     classDef sales fill:#fce7f3,stroke:#db2777,stroke-width:2px;
     classDef finance fill:#fee2e2,stroke:#dc2626,stroke-width:2px;
     classDef logistics fill:#f3e8ff,stroke:#7c3aed,stroke-width:2px;
-    classDef projects fill:#e0f7fa,stroke:#0097a7,stroke-width:2px;
-
 
     subgraph CRMSec ["1. CRM & Demand Trigger"]
         Lead[CrmLead]:::crm
@@ -43,18 +41,10 @@ graph TD
         QuoteItem[QuotationItem]:::sales
         Quote -->|Contains| QuoteItem
         Quote -->|Approved & Converts to| SO[SalesOrder]:::sales
-        Quote -->|Approved & Auto-Spawns| Proj[Project]:::projects
         SO -->|Linked to| Cust
     end
 
-    subgraph ProjectSec ["3. Project & Material Planning"]
-        Milestone[ProjectMilestone]:::projects
-        MaterialReq[ProjectMaterialRequest]:::projects
-        Proj -->|Has Phases| Milestone
-        Milestone -->|Reserves Stocks| MaterialReq
-    end
-
-    subgraph ProcurementSec ["4. Procurement & Sourcing (Inbound)"]
+    subgraph ProcurementSec ["3. Procurement & Sourcing (Inbound)"]
         Rfq[Rfq]:::procurement
         PO[PurchaseOrder]:::procurement
         POItem[PurchaseOrderItem]:::procurement
@@ -63,7 +53,7 @@ graph TD
         Rfq -->|Collect Bids & Wins| PO
     end
 
-    subgraph InventorySec ["5. Inventory & WMS (Warehouse Bins)"]
+    subgraph InventorySec ["4. Inventory & WMS (Warehouse Bins)"]
         WH[Warehouse]:::inventory
         Bin[WarehouseBin]:::inventory
         Stock[BinProductStock]:::inventory
@@ -72,10 +62,10 @@ graph TD
         Bin -->|Stores Quantity| Stock
         Tx -->|Logs Stock Move| Bin
         GRN -->|Injects Stock| Bin
-        MaterialReq -->|Allocates Bins| Bin
+        SO -->|Reserves & Deducts| Bin
     end
 
-    subgraph LogisticsSec ["6. Fleet & Logistics Delivery"]
+    subgraph LogisticsSec ["5. Fleet & Logistics Delivery"]
         Shipment[Shipment]:::logistics
         Driver[Driver]:::logistics
         Vehicle[Vehicle]:::logistics
@@ -84,7 +74,7 @@ graph TD
         SO -->|Fulfill & Ship| Shipment
     end
 
-    subgraph FinanceSec ["7. Accounting & General Ledger"]
+    subgraph FinanceSec ["6. Accounting & General Ledger"]
         AP[AccountPayable]:::finance
         AR[AccountReceivable]:::finance
         PayLog[PaymentLog]:::finance
@@ -98,7 +88,7 @@ graph TD
 
     %% Key Inter-Module Links
     Stock -->|Below Reorder Level| Rfq
-    MaterialReq -->|Deducted from general availability| Stock
+    SO -.->|Triggers Inbound/Outbound Trace| Tx
 ```
 
 ---
@@ -123,7 +113,6 @@ graph TD
     %% Processes (Rounded Corners)
     P1["P1: Lead Pipeline & Conversions"]:::process
     P2["P2: Estimate Quotations & Sales Orders"]:::process
-    P3["P3: Project Material Allocations"]:::process
     P4["P4: Outbound Order Fulfillment"]:::process
     P5["P5: Multi-Supplier RFQ Bids & POs"]:::process
     P6["P6: Inbound Goods Receipt Note"]:::process
@@ -133,7 +122,6 @@ graph TD
     %% Data Stores (Double Bar / Open boxes)
     D1[("D1: CRM Opportunities &lt;crm_leads&gt;")]:::datastore
     D2[("D2: Warehouses & Bins Stocks &lt;bin_product_stocks&gt;")]:::datastore
-    D3[("D3: Projects & Material Reserves &lt;project_material_requests&gt;")]:::datastore
     D4[("D4: Accounts Receivable Ledger &lt;account_receivables&gt;")]:::datastore
     D5[("D5: Accounts Payable Ledger &lt;account_payables&gt;")]:::datastore
     D6[("D6: Immutable Ledger Logs &lt;inventory_transactions&gt;")]:::datastore
@@ -144,9 +132,7 @@ graph TD
     D1 -->|Won Lead| P2
     P2 -->|Create Profile| Customer
     Customer -->|Approve Quote| P2
-    P2 -->|Reserve Bin Stock| P3
-    P3 -->|Reserve Milestones| D3
-    P3 -->|Subtract Qty from General Stock| D2
+    P2 -->|Reserve Bin Stock| D2
     D2 -->|Generate Pick List| P4
     P4 -->|Scan Barcode / Ship Cargo| Customer
     P4 -->|Permanent stock deduction| D2
@@ -178,8 +164,8 @@ graph TD
 
 ## 🔄 Core Workflows & Detailed Data Flows
 
-### 1. Lead-to-Project & Order Conversion Flow
-This workflow demonstrates how customer interest captured in the CRM transitions seamlessly into signed contracts, auto-generating a standard B2B Sales Order alongside an execution Project Portfolio with designated warehouse stock reservations.
+### 1. Lead-to-Order Conversion Flow
+This workflow demonstrates how customer interest captured in the CRM transitions seamlessly into signed contracts, auto-generating a standard B2B Sales Order alongside assigned warehouse stock reservations.
 
 ```mermaid
 sequenceDiagram
@@ -189,7 +175,7 @@ sequenceDiagram
     participant CRM as CRM Pipeline (leads.blade.php)
     participant Sales as Sales Quotations (quotations.blade.php)
     participant WMS as Inventory & Bins (WMS)
-    participant Proj as Project Board (projects/show.blade.php)
+    participant SO as Sales Order (SalesOrders)
 
     CRM->>CRM: Log & Track Opportunity (CrmLead)
     CRM->>Staff: Hot Lead transitions to 'Proposal' status
@@ -200,20 +186,18 @@ sequenceDiagram
     Customer->>Staff: Quote Accepted & Signed off
     Staff->>Sales: Mark Quotation as 'Approved'
     rect rgba(0, 150, 160, 0.1)
-        Note over Sales, Proj: Automatic Multi-Entity Engine
+        Note over Sales, SO: Automatic Multi-Entity Engine
         Sales->>Sales: Auto-Generate Inbound B2B Sales Order (SalesOrder)
-        Sales->>Proj: Auto-Create Execution Project Portfolio (Project)
-        Sales->>Proj: Initialize standard Project Milestones (ProjectMilestone)
+        Sales->>SO: Map Addresses & Polymorphic Primary Contacts
     end
-    Proj->>WMS: Check available warehouse stock (BinProductStock)
-    Proj->>WMS: Log Bin-Level Material Allocation (ProjectMaterialRequest)
-    Note over WMS, Proj: Reserves stock specifically for this project, locking it out of regular Sales Orders!
+    SO->>WMS: Check available warehouse stock (BinProductStock)
+    SO->>WMS: Reserve Bin-Level Product Stocks for Outbound Dispatch
+    Note over WMS, SO: Locks stock specifically for fulfillment, ensuring transparent allocations!
 ```
 
 * **CRM Lead Kanban Component:** [leads.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/crm/leads.blade.php) - Manages leads, records client communications, and handles one-click conversions.
 * **Customer Profile Console:** [show.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/customers/show.blade.php) - Displays full order history, Outstanding Accounts Receivables (AR) management, and compiled payment certificates.
-* **Quotation Management Workspace:** [quotations.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/sales/quotations.blade.php) - Itemized quote calculator that automatically converts won estimates into active projects and orders.
-* **Project Dashboard:** [show.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/projects/show.blade.php) - Tracks progress, milestones, and isolates specific materials in warehouse bins using Project Material Requests to prevent standard sales allocation.
+* **Quotation Management Workspace:** [quotations.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/sales/quotations.blade.php) - Itemized quote calculator that automatically converts won estimates into active sales orders.
 
 ---
 
@@ -253,7 +237,7 @@ sequenceDiagram
 ---
 
 ### 3. Order-to-Cash Flow (Outbound Fulfillment & Certificates)
-This outbound path covers customer order receipt, inventory matching, Wave Picking in the WMS, driver delivery routing, invoicing, split payment collection, and secure corporate Payment Certificate generation.
+This outbound path covers customer order receipt, inventory matching, Pick list processing in the WMS, driver delivery routing, invoicing, split payment collection, and secure corporate Payment Certificate generation.
 
 ```mermaid
 sequenceDiagram
@@ -267,8 +251,8 @@ sequenceDiagram
 
     Cust->>SO: Place B2B Sales Order or Approve Quote
     SO->>WMS: Lock & Reserve stock at individual Warehouse Bins
-    WMS->>Admin: Generate Wave Pick List (optimized path picker)
-    Admin->>WMS: Scan QR Codes, Pick & Pack from Bin coordinates
+    WMS->>Admin: Generate Pick List (optimized path picker)
+    Admin->>WMS: Pick & Pack from Bin coordinates
     WMS->>WMS: Record Stock Deductions & Inventory Transaction logs
     WMS->>Log: Initialize Delivery Manifest & Logistics Shipment
     Log->>Log: Assign Driver & Vehicle to optimal shipment routes
@@ -333,16 +317,12 @@ The SCM ERP incorporates advanced Artificial Intelligence capabilities designed 
 - **CRM Details Overlay:** High-fidelity opportunity detail modal with chronological interaction logs, A4 lead sheet printing, and direct SCM conversions.
 - **Quotation Kanban Board:** Interactive, drag-and-drop quotation pipeline (`Draft`, `Sent`, `Accepted`, `Rejected`) with live deal volume trackers.
 - **CRM Opportunity Converter:** One-click conversion from CRM Lead to draft Quotations with automatic `QuotationItem` line items, stage changes to `proposal` (60% probability), and CRM activity logging.
-- **SCM Cascade Engine:** Automatic conversion of `Accepted` quotes into standard B2B Sales Orders, mapping polymorphic contacts and billing/shipping address IDs, updating linked leads to `won` (100% probability), and initiating bin-level material reservations.
-- **A4 Corporate Letterhead Isolation**: Native print isolator overlays and SHA-256 ERP verification hashes for invoices, quotations, and project files.
+- **SCM Cascade Engine:** Automatic conversion of `Accepted` quotes into standard B2B Sales Orders, mapping polymorphic contacts and billing/shipping address IDs, updating linked leads to `won` (100% probability), and initiating stock reservations.
+- **A4 Corporate Letterhead Isolation**: Native print isolator overlays and SHA-256 ERP verification hashes for invoices, quotations, and sales order summaries.
 - **Lead Auto-Conversion:** Instantly convert won leads into Customer Profiles and draft Quotations.
 - **Quotation Engine:** Dynamic tax, discount, and landed cost estimations.
 - **Sales Orders (SOs):** Pick, pack, and ship items directly from assigned inventory bins.
 - **Returns (RMA):** Process and log customer returns directly into inventory.
-
-### 🏗️ Project Management
-- **Milestone Sourcing:** Connect project schedules directly to supply chain procurement.
-- **Dedicated Material Allocations:** Reserve specific warehouse bin inventory to projects so it cannot be sold to general sales orders.
 
 ### 🚚 Fleet & Logistics
 - **Driver & Vehicle Management:** Log active vehicles, drivers, and asset schedules.
@@ -353,7 +333,7 @@ The SCM ERP incorporates advanced Artificial Intelligence capabilities designed 
 - **Accounts Payable (AP):** Track supplier bills, split payments, and upload receipts.
 - **Accounts Receivable (AR):** Manage customer invoices, split payments, and record transactions.
 - **Bidirectional Payment Sync**: Accounts Receivable dynamically updates linked Invoices upon payment logs. Invoices propagate manual toggles back to receivables, and automatically create a `PaymentLog` entry for any outstanding balance when marked `paid`.
-- **Self-Healing Payment Observers**: Static `PaymentLog` lifecycle hooks automatically recalculate and update parent receivable/payable balances and statuses (`paid`, `partial`, `unpaid`) upon saves or deletions, preventing stale data.
+- **Self-Healing Payment Observers:** Static `PaymentLog` lifecycle hooks automatically recalculate and update parent receivable/payable balances and statuses (`paid`, `partial`, `unpaid`) upon saves or deletions, preventing stale data.
 - **Outstanding Progress Bar:** Dynamic, real-time receivables status meter in the primary SCM dashboard.
 - **Payment Certificate Compiler:** Generates custom-itemized corporate receipts for selected payments in PDF format.
 
@@ -361,7 +341,6 @@ The SCM ERP incorporates advanced Artificial Intelligence capabilities designed 
 - **FixSubfolderIntendedUrl Middleware:** Solves XAMPP session-expiration redirect bypass bug under subdirectory installations (e.g. `/scm-erp/`).
 - **Dynamic Filters:** Real-time timezone middleware integration and dashboard financial reporting interval parameters.
 - **Root Redirection:** Automatic guest fallback from `/` to named route `'login'` with obsolete file clean-ups.
-
 
 ---
 
