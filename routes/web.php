@@ -35,7 +35,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('warehouses/{id}', 'warehouses.show')->name('warehouses.show');
     Volt::route('inventory/log', 'inventory.log')->name('inventory.log');
     Volt::route('inventory/adjustments', 'inventory.adjustments')->name('inventory.adjustments');
-    Volt::route('inventory/analytics', 'inventory.analytics')->name('inventory.analytics');
 
 
     // CRM Module
@@ -99,6 +98,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('admin/constants', 'admin.constants')
         ->name('admin.constants')
         ->middleware('can:view constants'); 
+
+    Volt::route('admin/imports', 'admin.imports.index')
+        ->name('admin.imports');
 });
 
 Route::view('profile', 'profile')
@@ -106,3 +108,12 @@ Route::view('profile', 'profile')
     ->name('profile');
 
 require __DIR__.'/auth.php';
+Route::get('/debug-url', function () {
+    return response()->json([
+        'url' => request()->url(),
+        'root' => request()->root(),
+        'path' => request()->path(),
+        'fullUrl' => request()->fullUrl(),
+        'route' => route('debug.url.test')
+    ]);
+})->name('debug.url.test');

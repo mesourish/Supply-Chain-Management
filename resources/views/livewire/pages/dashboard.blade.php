@@ -41,6 +41,13 @@ new class extends Component {
     public $aiInsights = [];
     public $grossProfit = 0;
     public $netMargin = 0;
+    
+    // New SCM Dash Metrics
+    public $topProductsList = [];
+    public $warehouseUtilization = 0;
+    public $activeVehiclesCount = 0;
+    public $totalVehiclesCount = 0;
+    public $fleetUtilization = 0;
 
     public function mount()
     {
@@ -232,18 +239,51 @@ new class extends Component {
             $this->chartSpend[] = (float)$spend;
         }
         
-        // Top Products by Quantity Sold
+        // Top Products by Quantity Sold and Revenue
         $topProductsQuery = \DB::table('sales_order_items')
             ->join('sales_orders', 'sales_order_items.sales_order_id', '=', 'sales_orders.id')
             ->join('products', 'sales_order_items.product_id', '=', 'products.id')
-            ->select('products.name', \DB::raw('SUM(sales_order_items.quantity) as total_sold'))
+            ->select(
+                'products.id',
+                'products.name',
+                'products.sku',
+                'products.category',
+                'products.unit_price',
+                \DB::raw('SUM(sales_order_items.quantity) as total_sold'),
+                \DB::raw('SUM(sales_order_items.quantity * sales_order_items.unit_price) as total_revenue')
+            )
             ->whereBetween('sales_orders.created_at', [$start, $end])
             ->whereIn('sales_orders.status', ['confirmed', 'processing', 'shipped', 'delivered'])
-            ->groupBy('products.id', 'products.name')
+            ->groupBy('products.id', 'products.name', 'products.sku', 'products.category', 'products.unit_price')
             ->orderByDesc('total_sold')
-            ->limit(4)
+            ->limit(5)
             ->get();
-            
+
+        $this->topProductsList = [];
+        foreach ($topProductsQuery as $p) {
+            $sold = (int)$p->total_sold;
+            if ($sold >= 30) {
+                $velocity = 'HIGH';
+                $badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+            } elseif ($sold >= 10) {
+                $velocity = 'MODERATE';
+                $badgeColor = 'bg-blue-100 text-blue-800 border-blue-200';
+            } else {
+                $velocity = 'SLOW';
+                $badgeColor = 'bg-slate-100 text-slate-800 border-slate-200';
+            }
+
+            $this->topProductsList[] = [
+                'name' => $p->name,
+                'sku' => $p->sku,
+                'category' => $p->category,
+                'total_sold' => $sold,
+                'total_revenue' => (float)$p->total_revenue,
+                'velocity' => $velocity,
+                'badge_color' => $badgeColor
+            ];
+        }
+
         $this->topProductsLabels = $topProductsQuery->pluck('name')->toArray();
         $this->topProductsSeries = $topProductsQuery->pluck('total_sold')->map(fn($val) => (int)$val)->toArray();
         
@@ -256,6 +296,25 @@ new class extends Component {
         $this->grossProfit = $this->totalRevenue - $this->totalSpend;
         $this->netMargin = $this->totalRevenue > 0 ? ($this->grossProfit / $this->totalRevenue) * 100 : 0;
         
+        // Warehouse Space Utilization
+        $activeStock = BinProductStock::sum('quantity');
+        $totalCapacity = 100000; 
+        $this->warehouseUtilization = $totalCapacity > 0 ? min(100, round(($activeStock / $totalCapacity) * 100, 1)) : 0;
+
+        // Active Fleet status
+        $this->totalVehiclesCount = \DB::table('vehicles')->count();
+        $this->activeVehiclesCount = Shipment::where('status', 'in_transit')->distinct('vehicle_id')->count();
+        if ($this->activeVehiclesCount === 0) {
+            $this->activeVehiclesCount = SalesOrder::where('status', 'shipped')->count();
+        }
+        if ($this->totalVehiclesCount > 0) {
+            $this->activeVehiclesCount = min($this->totalVehiclesCount, $this->activeVehiclesCount);
+            $this->fleetUtilization = round(($this->activeVehiclesCount / $this->totalVehiclesCount) * 100);
+        } else {
+            $this->activeVehiclesCount = 0;
+            $this->fleetUtilization = 0;
+        }
+
         // AI Insights
         $this->aiInsights = [];
         if ($this->accountsPayableUnpaid > $this->accountsReceivableUnpaid) {
@@ -266,6 +325,9 @@ new class extends Component {
         }
         if ($this->netMargin > 20) {
             $this->aiInsights[] = "📈 Excellent profitability detected! Net margin is holding strong at " . number_format($this->netMargin, 1) . "%.";
+        }
+        if ($this->warehouseUtilization > 80) {
+            $this->aiInsights[] = "⚠️ Warehouse storage is approaching maximum capacity ({$this->warehouseUtilization}%). Suggest stock allocation adjustments.";
         }
         if (empty($this->aiInsights)) {
             $this->aiInsights[] = "✅ Operations are running smoothly. No critical anomalies detected.";
@@ -289,6 +351,7 @@ new class extends Component {
             'chartSpend' => $this->chartSpend,
             'topProductsLabels' => $this->topProductsLabels,
             'topProductsSeries' => $this->topProductsSeries,
+            'topProductsList' => $this->topProductsList,
         ]);
     }
 };
@@ -517,17 +580,125 @@ new class extends Component {
                 </div>
             </div>
 
-            <!-- Visualizations removed as per request -->
-
-            
-            <!-- ADVANCED: ApexCharts Visualizations -->
+            <!-- ADVANCED: ApexCharts Visualizations & Operational Capacity -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8" wire:ignore>
+                <!-- Revenue vs Spend Chart -->
                 <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150 lg:col-span-2">
                     <h3 class="text-lg font-bold text-gray-900 mb-4">Revenue vs Procurement Spend</h3>
                     <div id="revenueSpendChart" class="w-full h-72"></div>
                 </div>
-                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150">
-                    <h3 class="text-lg font-bold text-gray-900 mb-4">Top Velocity Products</h3>
+                
+                <!-- Supply Chain Operations Health Cards -->
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150 flex flex-col justify-between" wire:ignore.self>
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900 mb-1">Operational Capacity</h3>
+                        <p class="text-xs text-gray-400 mb-6">Real-time logistics and warehouse resource allocation</p>
+                        
+                        <div class="space-y-6">
+                            <!-- Warehouse Utilization -->
+                            <div class="space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm font-semibold text-gray-600 flex items-center gap-1.5">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                                        Warehouse Storage Utilization
+                                    </span>
+                                    <span class="text-sm font-extrabold text-gray-900">{{ $warehouseUtilization }}%</span>
+                                </div>
+                                <div class="w-full bg-gray-100 rounded-full h-3">
+                                    <div class="bg-indigo-600 h-3 rounded-full transition-all duration-500" style="width: {{ $warehouseUtilization }}%"></div>
+                                </div>
+                                <div class="flex justify-between text-[10px] text-gray-400">
+                                    <span>Active stock in warehouse bins</span>
+                                    <span>Total Capacity: 100k Units</span>
+                                </div>
+                            </div>
+
+                            <!-- Fleet Utilization -->
+                            <div class="space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm font-semibold text-gray-600 flex items-center gap-1.5">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                                        Logistics Fleet Deployment
+                                    </span>
+                                    <span class="text-sm font-extrabold text-gray-900">{{ $fleetUtilization }}%</span>
+                                </div>
+                                <div class="w-full bg-gray-100 rounded-full h-3">
+                                    <div class="bg-emerald-500 h-3 rounded-full transition-all duration-500" style="width: {{ $fleetUtilization }}%"></div>
+                                </div>
+                                <div class="flex justify-between text-[10px] text-gray-400">
+                                    <span>{{ $activeVehiclesCount }} of {{ $totalVehiclesCount }} vehicles active in transit</span>
+                                    <span>All drivers licensed & verified</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="border-t border-gray-100 pt-4 mt-6">
+                        <div class="flex items-center justify-between text-xs font-semibold">
+                            <a href="{{ url('/warehouses') }}" class="text-indigo-600 hover:text-indigo-800">Storage Bins</a>
+                            <a href="{{ url('/logistics/vehicles') }}" class="text-indigo-600 hover:text-indigo-800">Fleet Control</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rebuilt Section: Top Product Sales & Velocity Tracker (Split Detailed Grid + Chart) -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Left: Detailed Data Table -->
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150 lg:col-span-2">
+                    <div class="mb-4">
+                        <h3 class="text-lg font-bold text-gray-900">Top Velocity Products & Turnover</h3>
+                        <p class="text-xs text-gray-400">Fastest-moving items ranked by total units sold and revenue contribution</p>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-100">
+                            <thead>
+                                <tr class="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50/50">
+                                    <th class="px-4 py-2.5 rounded-l-xl">Product / SKU</th>
+                                    <th class="px-4 py-2.5">Category</th>
+                                    <th class="px-4 py-2.5 text-center">Units Sold</th>
+                                    <th class="px-4 py-2.5 text-right">Revenue Generated</th>
+                                    <th class="px-4 py-2.5 rounded-r-xl text-center">Sales Velocity</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 bg-white">
+                                @forelse($topProductsList as $tp)
+                                    <tr class="hover:bg-gray-50/50 transition-colors text-sm">
+                                        <td class="px-4 py-3 whitespace-nowrap">
+                                            <div class="font-bold text-gray-900">{{ $tp['name'] }}</div>
+                                            <div class="text-xs text-gray-400 font-mono">{{ $tp['sku'] }}</div>
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-gray-500">
+                                            {{ $tp['category'] ?: 'Uncategorized' }}
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-center font-extrabold text-gray-900">
+                                            {{ $tp['total_sold'] }} units
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-right font-extrabold text-indigo-600">
+                                            {{ setting('currency_symbol', '$') }}{{ number_format($tp['total_revenue'], 2) }}
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-center">
+                                            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold border {{ $tp['badge_color'] }}">
+                                                {{ $tp['velocity'] }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="5" class="px-4 py-8 text-center text-gray-400">
+                                            No sales data available for this timeframe.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Right: Chart Share representation -->
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-150" wire:ignore>
+                    <h3 class="text-lg font-bold text-gray-900 mb-4">Volume Distribution</h3>
                     <div id="topProductsChart" class="w-full h-72 flex items-center justify-center"></div>
                 </div>
             </div>

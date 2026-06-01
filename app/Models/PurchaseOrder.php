@@ -22,6 +22,8 @@ class PurchaseOrder extends Model
         'contact_person_id',
         'billing_address_id',
         'shipping_address_id',
+        'currency_code',
+        'exchange_rate',
     ];
 
     public function supplier()

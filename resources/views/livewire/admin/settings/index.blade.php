@@ -10,6 +10,7 @@ usesFileUploads();
 
 state([
     'currency_symbol'   => '$',
+    'default_currency_code' => 'USD',
     'showClearDataConfirm' => false,
     'website_name'      => '',
     'website_logo'      => null,
@@ -36,8 +37,20 @@ mount(function () {
     ) {
         abort(403);
     }
+
+    // Auto-seed USD if there are no currencies
+    if (\App\Models\Currency::count() === 0) {
+        \App\Models\Currency::create([
+            'code' => 'USD',
+            'name' => 'US Dollar',
+            'symbol' => '$',
+            'exchange_rate' => 1.0,
+            'is_base' => true,
+        ]);
+    }
     
     $this->currency_symbol     = setting('currency_symbol', '$');
+    $this->default_currency_code = setting('default_currency_code', 'USD');
     $this->website_name        = setting('website_name', 'SCM ERP');
     $this->time_format         = setting('time_format', 'H:i');
     $this->date_format         = setting('date_format', 'Y-m-d');
@@ -56,6 +69,7 @@ mount(function () {
 
 with(fn () => [
     'gst_percentages' => SystemConstant::where('type', 'gst_percentage')->where('is_active', true)->orderBy('value')->get(),
+    'currencies' => \App\Models\Currency::all(),
 ]);
 
 $saveSettings = function () {
@@ -82,7 +96,23 @@ $saveSettings = function () {
             $tz = 'UTC';
             $this->timezone = 'UTC';
         }
-        set_setting('currency_symbol',   $this->currency_symbol);
+        
+        set_setting('default_currency_code', $this->default_currency_code);
+        
+        // Find currency
+        $selectedCurrency = \App\Models\Currency::where('code', $this->default_currency_code)->first();
+        if ($selectedCurrency) {
+            // Update currency symbol automatically
+            set_setting('currency_symbol', $selectedCurrency->symbol);
+            $this->currency_symbol = $selectedCurrency->symbol;
+            
+            // Set as base currency, reset others
+            \App\Models\Currency::where('id', '!=', $selectedCurrency->id)->update(['is_base' => false]);
+            $selectedCurrency->update(['is_base' => true, 'exchange_rate' => 1.0]);
+        } else {
+            set_setting('currency_symbol',   $this->currency_symbol);
+        }
+
         set_setting('time_format',       $this->time_format);
         set_setting('date_format',       $this->date_format);
         set_setting('timezone',          $tz);
@@ -206,10 +236,20 @@ $clearData = function () {
 
                             @if(auth()->user()->hasRole('Super Admin') || auth()->user()->can('manage localization_settings'))
                             <div x-show="tab === 'localization'" style="display: none;" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <!-- Default Currency Selection -->
+                                <div>
+                                    <label for="default_currency_code" class="block text-sm font-medium text-gray-700">Default Base Currency</label>
+                                    <select wire:model.live="default_currency_code" id="default_currency_code" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                        @foreach($currencies as $currency)
+                                            <option value="{{ $currency->code }}">{{ $currency->code }} - {{ $currency->name }} ({{ $currency->symbol }})</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
                                 <!-- Currency Symbol -->
                                 <div>
-                                    <label for="currency_symbol" class="block text-sm font-medium text-gray-700">Currency Symbol</label>
-                                    <input wire:model="currency_symbol" id="currency_symbol" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="$" required />
+                                    <label for="currency_symbol" class="block text-sm font-medium text-gray-700">Currency Symbol (auto-synced)</label>
+                                    <input wire:model="currency_symbol" id="currency_symbol" type="text" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="$" required readonly />
                                 </div>
 
                                 <!-- Date Format -->
@@ -218,6 +258,7 @@ $clearData = function () {
                                     <select wire:model="date_format" id="date_format" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                                         <option value="Y-m-d">YYYY-MM-DD</option>
                                         <option value="d/m/Y">DD/MM/YYYY</option>
+                                        <option value="d-m-Y">DD-MM-YYYY</option>
                                         <option value="m/d/Y">MM/DD/YYYY</option>
                                         <option value="M d, Y">MMM DD, YYYY</option>
                                         <option value="F d, Y">MMMM DD, YYYY</option>

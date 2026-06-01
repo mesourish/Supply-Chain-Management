@@ -12,27 +12,123 @@ new class extends Component {
     public $isEditing = false;
     public $orderId = null;
 
+    // Items and GST fields
+    public $items = [];
+    public $apply_gst = false;
+    public $gst_type = 'exclusive';
+    public $gst_percentage = 18;
+    public $shipping_amount = 0;
+    public $tax_amount = 0;
+    public $subtotal = 0;
+
     public function rules()
     {
         return [
             'customer_id' => 'required|exists:customers,id',
             'status' => 'required|string',
-            'total_amount' => 'required|numeric|min:0',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.unit_price' => 'required|numeric|min:0',
         ];
+    }
+
+    public function mount()
+    {
+        $this->gst_percentage = (float)setting('default_gst_percentage', '18');
+        $this->gst_type = setting('default_gst_type', 'exclusive');
+        $this->items = [
+            ['product_id' => '', 'quantity' => 1, 'unit_price' => 0.00]
+        ];
+    }
+
+    public function updatedItems($value, $key)
+    {
+        $parts = explode('.', $key);
+        if (count($parts) === 2) {
+            $index = $parts[0];
+            $field = $parts[1];
+            
+            if ($field === 'product_id' && $value) {
+                $product = \App\Models\Product::find($value);
+                if ($product) {
+                    $this->items[$index]['unit_price'] = $product->unit_price;
+                }
+            }
+        }
+        $this->recalculateTotals();
+    }
+
+    public function updatedApplyGst() { $this->recalculateTotals(); }
+    public function updatedGstType() { $this->recalculateTotals(); }
+    public function updatedGstPercentage() { $this->recalculateTotals(); }
+    public function updatedShippingAmount() { $this->recalculateTotals(); }
+
+    public function addItemLine()
+    {
+        $this->items[] = ['product_id' => '', 'quantity' => 1, 'unit_price' => 0.00];
+        $this->recalculateTotals();
+    }
+
+    public function removeItemLine($index)
+    {
+        if (count($this->items) > 1) {
+            unset($this->items[$index]);
+            $this->items = array_values($this->items);
+        }
+        $this->recalculateTotals();
+    }
+
+    public function recalculateTotals()
+    {
+        $this->subtotal = 0;
+        foreach ($this->items as $item) {
+            $this->subtotal += ((float)($item['quantity'] ?? 0) * (float)($item['unit_price'] ?? 0));
+        }
+
+        $this->tax_amount = 0;
+        if ($this->apply_gst) {
+            $gstPct = (float)$this->gst_percentage;
+            if ($this->gst_type === 'inclusive') {
+                $this->tax_amount = $this->subtotal - ($this->subtotal / (1 + ($gstPct / 100)));
+            } else {
+                $this->tax_amount = $this->subtotal * ($gstPct / 100);
+            }
+        }
+
+        $this->total_amount = $this->subtotal + (float)$this->shipping_amount;
+        if ($this->apply_gst && $this->gst_type === 'exclusive') {
+            $this->total_amount += $this->tax_amount;
+        }
     }
 
     public function save()
     {
         $this->validate();
 
-        SalesOrder::updateOrCreate(
-            ['id' => $this->orderId],
-            [
-                'customer_id' => $this->customer_id,
-                'status' => $this->status,
-                'total_amount' => $this->total_amount,
-            ]
-        );
+        $this->recalculateTotals();
+
+        \DB::transaction(function () {
+            $so = SalesOrder::updateOrCreate(
+                ['id' => $this->orderId],
+                [
+                    'customer_id' => $this->customer_id,
+                    'status' => $this->status,
+                    'total_amount' => $this->total_amount,
+                    'tax_amount' => $this->tax_amount,
+                    'shipping_amount' => (float)($this->shipping_amount ?: 0),
+                ]
+            );
+
+            // Save items
+            $so->items()->delete();
+            foreach ($this->items as $item) {
+                $so->items()->create([
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                ]);
+            }
+        });
 
         $this->resetInputFields();
         $this->dispatch('toast', type: 'success', message:  $this->orderId ? 'SO Updated Successfully.' : 'SO Created Successfully.');
@@ -41,11 +137,31 @@ new class extends Component {
     public function edit($id)
     {
         $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
-        $order = SalesOrder::findOrFail($id);
+        $order = SalesOrder::with('items')->findOrFail($id);
         $this->orderId = $id;
         $this->customer_id = $order->customer_id;
         $this->status = $order->status;
         $this->total_amount = $order->total_amount;
+        $this->tax_amount = $order->tax_amount;
+        $this->shipping_amount = $order->shipping_amount;
+        $this->apply_gst = $order->tax_amount > 0;
+        
+        $this->items = [];
+        foreach ($order->items as $item) {
+            $this->items[] = [
+                'product_id' => $item->product_id,
+                'quantity' => $item->quantity,
+                'unit_price' => $item->unit_price,
+            ];
+        }
+        
+        if (empty($this->items)) {
+            $this->items = [
+                ['product_id' => '', 'quantity' => 1, 'unit_price' => 0.00]
+            ];
+        }
+
+        $this->recalculateTotals();
         $this->isEditing = true;
     }
 
@@ -60,8 +176,17 @@ new class extends Component {
         $this->customer_id = '';
         $this->status = 'pending';
         $this->total_amount = 0;
+        $this->tax_amount = 0;
+        $this->shipping_amount = 0;
+        $this->apply_gst = false;
+        $this->gst_type = setting('default_gst_type', 'exclusive');
+        $this->gst_percentage = (float)setting('default_gst_percentage', '18');
         $this->orderId = null;
         $this->isEditing = false;
+        $this->items = [
+            ['product_id' => '', 'quantity' => 1, 'unit_price' => 0.00]
+        ];
+        $this->recalculateTotals();
     }
 
     public function with()
@@ -81,7 +206,7 @@ new class extends Component {
             
 
             <form wire:submit="save">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <x-input-label for="customer_id" value="Customer" />
                         <select wire:model="customer_id" id="customer_id" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm" required>
@@ -104,10 +229,107 @@ new class extends Component {
                         </select>
                         <x-input-error :messages="$errors->get('status')" class="mt-2" />
                     </div>
-                    <div>
-                        <x-input-label for="total_amount" value="Total Amount" />
-                        <x-text-input wire:model="total_amount" id="total_amount" type="number" step="0.01" class="mt-1 block w-full" required />
-                        <x-input-error :messages="$errors->get('total_amount')" class="mt-2" />
+                </div>
+
+                <!-- Multiple Products Selection Section -->
+                <div class="mt-6 border-t border-gray-150 pt-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-extrabold text-gray-800 uppercase tracking-wider">Sales Order Items</h3>
+                        <button type="button" wire:click="addItemLine" class="inline-flex items-center px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg transition-colors border border-indigo-100">
+                            + Add Product Row
+                        </button>
+                    </div>
+
+                    <div class="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+                        @foreach($items as $index => $item)
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-slate-50/50 p-4 rounded-xl border border-slate-100 relative group">
+                                @if(count($items) > 1)
+                                    <button type="button" wire:click="removeItemLine({{ $index }})" class="absolute -top-2 -right-2 bg-rose-100 text-rose-600 hover:bg-rose-500 hover:text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold transition-colors shadow-sm">
+                                        &times;
+                                    </button>
+                                @endif
+                                
+                                <div class="md:col-span-2">
+                                    <x-input-label value="Product" />
+                                    <select wire:model.live="items.{{ $index }}.product_id" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm" required>
+                                        <option value="">Select Product...</option>
+                                        @foreach(\App\Models\Product::all() as $p)
+                                            <option value="{{ $p->id }}">{{ $p->sku }} - {{ $p->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    <x-input-error :messages="$errors->get('items.'.$index.'.product_id')" class="mt-1" />
+                                </div>
+                                
+                                <div>
+                                    <x-input-label value="Quantity" />
+                                    <x-text-input wire:model.live="items.{{ $index }}.quantity" type="number" min="1" class="mt-1 block w-full" required />
+                                    <x-input-error :messages="$errors->get('items.'.$index.'.quantity')" class="mt-1" />
+                                </div>
+
+                                <div>
+                                    <x-input-label value="Unit Price" />
+                                    <x-text-input wire:model.live="items.{{ $index }}.unit_price" type="number" step="0.01" min="0" class="mt-1 block w-full" required />
+                                    <x-input-error :messages="$errors->get('items.'.$index.'.unit_price')" class="mt-1" />
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <!-- Tax and Shipping panel -->
+                    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-gray-100 pt-6">
+                        <div class="space-y-4">
+                            <div class="flex items-center">
+                                <label class="inline-flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" wire:model.live="apply_gst" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                    <span class="text-xs font-bold text-gray-700">Apply GST Tax to Order</span>
+                                </label>
+                            </div>
+                            
+                            @if($apply_gst)
+                            <div class="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-150">
+                                <div>
+                                    <x-input-label value="GST Type" />
+                                    <select wire:model.live="gst_type" class="mt-1 block w-full rounded-md border-gray-300 text-xs font-semibold">
+                                        <option value="exclusive">Exclusive</option>
+                                        <option value="inclusive">Inclusive</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <x-input-label value="GST Rate (%)" />
+                                    <input type="number" step="0.01" wire:model.live="gst_percentage" class="mt-1 block w-full rounded-md border-gray-300 text-xs font-semibold">
+                                </div>
+                            </div>
+                            @endif
+
+                            <div>
+                                <x-input-label value="Shipping / Handling amount" />
+                                <input type="number" step="0.01" wire:model.live="shipping_amount" class="mt-1 block w-full rounded-md border-gray-300 text-xs font-semibold">
+                            </div>
+                        </div>
+
+                        <!-- Pricing Summary Block -->
+                        <div class="flex flex-col justify-end space-y-1.5 bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm">
+                            <div class="flex justify-between text-gray-600">
+                                <span>Subtotal:</span>
+                                <span class="font-mono font-bold">{{ setting('currency_symbol', '$') }}{{ number_format($subtotal, 2) }}</span>
+                            </div>
+                            @if($apply_gst)
+                            <div class="flex justify-between text-gray-600">
+                                <span>GST ({{ $gst_percentage }}% {{ ucfirst($gst_type) }}):</span>
+                                <span class="font-mono font-bold">{{ setting('currency_symbol', '$') }}{{ number_format($tax_amount, 2) }}</span>
+                            </div>
+                            @endif
+                            @if($shipping_amount > 0)
+                            <div class="flex justify-between text-gray-600">
+                                <span>Shipping &amp; Handling:</span>
+                                <span class="font-mono font-bold">{{ setting('currency_symbol', '$') }}{{ number_format($shipping_amount, 2) }}</span>
+                            </div>
+                            @endif
+                            <div class="flex justify-between text-gray-900 font-extrabold text-base border-t border-slate-200 pt-1 mt-1">
+                                <span>Grand Total:</span>
+                                <span class="font-mono font-black text-indigo-700">{{ setting('currency_symbol', '$') }}{{ number_format($total_amount, 2) }}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

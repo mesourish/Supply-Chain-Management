@@ -386,6 +386,11 @@ new class extends Component {
 
         DB::beginTransaction();
         try {
+            // Find primary contact person & billing/shipping addresses
+            $contactPerson = $quote->customer ? $quote->customer->contactPersons()->where('is_primary', true)->first() : null;
+            $billingAddress = $quote->customer ? $quote->customer->addresses()->where('type', 'billing')->first() : null;
+            $shippingAddress = $quote->customer ? $quote->customer->addresses()->where('type', 'shipping')->first() : null;
+
             // 1. Create SCM Sales Order (Commercial/financial ledger log)
             $salesOrder = SalesOrder::create([
                 'customer_id' => $quote->customer_id,
@@ -394,6 +399,9 @@ new class extends Component {
                 'tax_amount' => $quote->tax_amount,
                 'shipping_amount' => $quote->shipping_amount,
                 'notes' => $quote->notes,
+                'contact_person_id' => $contactPerson?->id,
+                'billing_address_id' => $billingAddress?->id,
+                'shipping_address_id' => $shippingAddress?->id,
             ]);
 
             // 2. Create Sales Order items matching quote lines
@@ -411,9 +419,9 @@ new class extends Component {
             foreach($quote->items as $item) {
                 if ($item->product_id) {
                     $binStock = \App\Models\BinProductStock::where('product_id', $item->product_id)
-                        ->where('quantity', '>', 0)
-                        ->orderBy('quantity', 'desc')
-                        ->first();
+                         ->where('quantity', '>', 0)
+                         ->orderBy('quantity', 'desc')
+                         ->first();
 
                     if ($binStock) {
                         $qtyToReserve = min($item->quantity, $binStock->quantity);
@@ -435,6 +443,24 @@ new class extends Component {
                             'user_id' => auth()->id(),
                         ]);
                     }
+                }
+            }
+
+            // 4. Transition linked lead to WON stage and log activity
+            if ($quote->crm_lead_id) {
+                $lead = \App\Models\CrmLead::find($quote->crm_lead_id);
+                if ($lead) {
+                    $lead->update([
+                        'pipeline_stage' => 'won',
+                        'deal_probability' => 100,
+                    ]);
+                    \App\Models\CrmActivity::create([
+                        'crm_lead_id' => $lead->id,
+                        'type' => 'meeting',
+                        'description' => "Quotation approved! Auto-converted Quotation {$quote->reference_no} into Sales Order SO-{$salesOrder->id}",
+                        'activity_date' => now()->toDateString(),
+                        'user_id' => auth()->id() ?? \App\Models\User::first()?->id,
+                    ]);
                 }
             }
 

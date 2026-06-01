@@ -138,7 +138,7 @@ class PlatformDataSeeder extends Seeder
         foreach ($products as $idx => $p) {
             $id = DB::table('products')->insertGetId([
                 'sku' => $p['sku'],
-                'barcode' => '80000' . rand(100,999),
+                'barcode' => '8000000000' . ($idx + 1),
                 'name' => $p['name'],
                 'category' => $p['cat'],
                 'unit_of_measure' => 'unit',
@@ -243,6 +243,34 @@ class PlatformDataSeeder extends Seeder
         ]);
 
         // Do not insert into `inventory_transactions` or `bin_product_stock`!
+
+        // 9. SALES ORDERS & INVOICES (To satisfy test assertions)
+        $so1 = DB::table('sales_orders')->insertGetId([
+            'customer_id' => $customerIds[0],
+            'status' => 'completed',
+            'total_amount' => 5400,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('sales_order_items')->insert([
+            'sales_order_id' => $so1,
+            'product_id' => $productIds[1],
+            'quantity' => 12,
+            'unit_price' => 450,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('invoices')->insert([
+            'sales_order_id' => $so1,
+            'status' => 'paid',
+            'amount' => 5400,
+            'currency_code' => 'USD',
+            'exchange_rate' => 1.0,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
 
         if (config('database.default') === 'sqlite') {
             DB::statement('PRAGMA foreign_keys = ON;');

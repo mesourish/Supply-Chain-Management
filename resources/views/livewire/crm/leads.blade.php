@@ -278,6 +278,30 @@ new class extends Component {
             'total_amount' => $lead->deal_value,
         ]);
 
+        // Create a QuotationItem matching the lead's deal value
+        QuotationItem::create([
+            'quotation_id' => $quotation->id,
+            'description' => "Lead Opportunity: " . $lead->title,
+            'quantity' => 1,
+            'unit_price' => $lead->deal_value,
+            'total_price' => $lead->deal_value,
+        ]);
+
+        // Update Lead status to proposal/60%
+        $lead->update([
+            'pipeline_stage' => 'proposal',
+            'deal_probability' => 60,
+        ]);
+
+        // Log Timeline Interaction Activity
+        CrmActivity::create([
+            'crm_lead_id' => $lead->id,
+            'type' => 'note',
+            'description' => "Lead converted to Sales Quote successfully: Ref {$quotation->reference_no}",
+            'activity_date' => now()->toDateString(),
+            'user_id' => auth()->id() ?? User::first()?->id,
+        ]);
+
         $this->dispatch('toast', type: 'success', message:  "Lead converted to Sales Quote successfully: Ref {$quotation->reference_no}");
     }
 

@@ -9,6 +9,7 @@ new class extends Component {
     public PurchaseOrder $order;
     public $items;
     public $products;
+    public $currencySymbol = '$';
 
     // Form fields for adding items
     public $product_id = '';
@@ -20,6 +21,7 @@ new class extends Component {
         $this->order = $order->load('supplier.products', 'items.product', 'grns');
         $this->items = $this->order->items;
         $this->products = Product::all();
+        $this->currencySymbol = \App\Models\Currency::where('code', $this->order->currency_code)->value('symbol') ?? setting('currency_symbol', '$');
     }
 
     public function updatedProductId($value)
@@ -218,7 +220,7 @@ new class extends Component {
                             @if($order->supplier->products->count() > 0)
                                 <optgroup label="Attached to {{ $order->supplier->name }}">
                                     @foreach($order->supplier->products as $p)
-                                        <option value="{{ $p->id }}">{{ $p->sku }} - {{ $p->name }} (Agreed Price: {{ setting('currency_symbol', '$') }}{{ $p->pivot->price }})</option>
+                                        <option value="{{ $p->id }}">{{ $p->sku }} - {{ $p->name }} (Agreed Price: {{ $currencySymbol }}{{ $p->pivot->price }})</option>
                                     @endforeach
                                 </optgroup>
                             @endif
@@ -236,7 +238,7 @@ new class extends Component {
                         <x-input-error :messages="$errors->get('quantity')" class="mt-2" />
                     </div>
                     <div>
-                        <x-input-label for="unit_price" value="Unit Price ($)" />
+                        <x-input-label for="unit_price" value="Unit Price ({{ $order->currency_code }})" />
                         <x-text-input wire:model="unit_price" id="unit_price" type="number" step="0.01" min="0" class="mt-1 block w-full" required />
                         <x-input-error :messages="$errors->get('unit_price')" class="mt-2" />
                     </div>
@@ -267,8 +269,8 @@ new class extends Component {
                             <tr>
                                 <td class="px-6 py-4 whitespace-nowrap">{{ $item->product->name }} ({{ $item->product->sku }})</td>
                                 <td class="px-6 py-4 whitespace-nowrap">{{ $item->quantity }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap">{{ setting('currency_symbol', '$') }}{{ number_format($item->unit_price, 2) }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap">{{ setting('currency_symbol', '$') }}{{ number_format($item->quantity * $item->unit_price, 2) }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">{{ $currencySymbol }}{{ number_format($item->unit_price, 2) }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">{{ $currencySymbol }}{{ number_format($item->quantity * $item->unit_price, 2) }}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-right">
                                     <button wire:click="removeItem({{ $item->id }})" class="text-red-600 hover:text-red-900">Remove</button>
                                 </td>
@@ -278,20 +280,20 @@ new class extends Component {
                     <tfoot class="bg-gray-50 border-t-2 border-gray-200">
                         <tr>
                             <td colspan="3" class="px-6 py-4 text-right font-medium text-gray-500">Subtotal</td>
-                            <td colspan="2" class="px-6 py-4 whitespace-nowrap text-left font-medium">{{ setting('currency_symbol', '$') }}{{ number_format($order->subtotal, 2) }}</td>
+                            <td colspan="2" class="px-6 py-4 whitespace-nowrap text-left font-medium">{{ $currencySymbol }}{{ number_format($order->subtotal, 2) }}</td>
                         </tr>
                         <tr>
                             <td colspan="3" class="px-6 py-2 text-right text-gray-500">
                                 GST ({{ $order->gst_percentage }}% {{ ucfirst($order->gst_type) }})
                             </td>
                             <td colspan="2" class="px-6 py-2 whitespace-nowrap text-left text-gray-500">
-                                {{ setting('currency_symbol', '$') }}{{ number_format($order->gst_amount, 2) }}
+                                {{ $currencySymbol }}{{ number_format($order->gst_amount, 2) }}
                             </td>
                         </tr>
                         <tr>
                             <td colspan="3" class="px-6 py-4 text-right font-bold text-gray-900 text-lg">Total</td>
                             <td colspan="2" class="px-6 py-4 whitespace-nowrap text-left font-bold text-gray-900 text-lg">
-                                {{ setting('currency_symbol', '$') }}{{ number_format($order->total_amount, 2) }}
+                                {{ $currencySymbol }}{{ number_format($order->total_amount, 2) }}
                             </td>
                         </tr>
                     </tfoot>
