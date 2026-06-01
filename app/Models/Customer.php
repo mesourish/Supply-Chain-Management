@@ -9,6 +9,45 @@ class Customer extends Model
 {
     use SoftDeletes;
 
+    protected static function booted()
+    {
+        static::saved(function ($customer) {
+            if ($customer->contact_person) {
+                $customer->contactPersons()->updateOrCreate(
+                    ['is_primary' => true],
+                    [
+                        'name' => $customer->contact_person,
+                        'email' => $customer->email,
+                        'phone' => $customer->phone,
+                        'designation' => 'Primary Contact',
+                    ]
+                );
+            }
+
+            if ($customer->billing_address) {
+                $customer->addresses()->updateOrCreate(
+                    ['type' => 'billing'],
+                    [
+                        'address_line_1' => $customer->billing_address,
+                        'is_default_billing' => true,
+                        'is_default_shipping' => false,
+                    ]
+                );
+            }
+
+            if ($customer->shipping_address) {
+                $customer->addresses()->updateOrCreate(
+                    ['type' => 'shipping'],
+                    [
+                        'address_line_1' => $customer->shipping_address,
+                        'is_default_billing' => false,
+                        'is_default_shipping' => true,
+                    ]
+                );
+            }
+        });
+    }
+
     protected $fillable = [
         'name',
         'contact_person',

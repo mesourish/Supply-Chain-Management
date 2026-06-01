@@ -145,22 +145,41 @@ new class extends Component {
     {
         $st = StockTake::with('items')->findOrFail($id);
 
-        // Apply variances — adjust bin_product_stock to match counted quantities
-        foreach ($st->items as $item) {
-            if ($item->counted_quantity === null) continue;
-            BinProductStock::updateOrCreate(
-                ['warehouse_bin_id' => $item->warehouse_bin_id, 'product_id' => $item->product_id],
-                ['quantity' => $item->counted_quantity]
-            );
-        }
+        \DB::transaction(function () use ($st) {
+            // Apply variances — adjust bin_product_stock to match counted quantities and log inventory transactions
+            foreach ($st->items as $item) {
+                if ($item->counted_quantity === null) continue;
 
-        $st->update([
-            'status'      => 'approved',
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
-        ]);
+                $variance = $item->counted_quantity - $item->system_quantity;
 
-        session()->flash('success', 'Stock take approved. Inventory updated to reflect physical count.');
+                if ($variance != 0) {
+                    \App\Models\InventoryTransaction::create([
+                        'product_id' => $item->product_id,
+                        'from_bin_id' => $variance < 0 ? $item->warehouse_bin_id : null,
+                        'to_bin_id' => $variance > 0 ? $item->warehouse_bin_id : null,
+                        'type' => $variance > 0 ? 'adjustment_in' : 'adjustment_out',
+                        'quantity' => abs($variance),
+                        'reference_type' => StockTake::class,
+                        'reference_id' => $st->id,
+                        'notes' => 'Stock Take Physical Count Discrepancy Adjustment (' . ($variance > 0 ? 'Surplus' : 'Shrinkage') . ')',
+                        'user_id' => auth()->id(),
+                    ]);
+                }
+
+                BinProductStock::updateOrCreate(
+                    ['warehouse_bin_id' => $item->warehouse_bin_id, 'product_id' => $item->product_id],
+                    ['quantity' => $item->counted_quantity]
+                );
+            }
+
+            $st->update([
+                'status'      => 'approved',
+                'approved_by' => auth()->id(),
+                'approved_at' => now(),
+            ]);
+        });
+
+        session()->flash('success', 'Stock take approved. Inventory updated to reflect physical count, and audit transactions recorded.');
     }
 
     public function cancelStockTake($id)

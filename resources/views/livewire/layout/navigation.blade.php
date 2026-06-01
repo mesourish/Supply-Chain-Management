@@ -59,9 +59,6 @@ new class extends Component
                                 <x-dropdown-link :href="route('inventory.log')" wire:navigate>
                                     {{ __('Audit Ledger') }}
                                 </x-dropdown-link>
-                                <x-dropdown-link :href="route('inventory.analytics')" wire:navigate>
-                                    {{ __('Analytics Data') }}
-                                </x-dropdown-link>
                                 <x-dropdown-link :href="route('inventory.adjustments')" wire:navigate>
                                     {{ __('Adjustments') }}
                                 </x-dropdown-link>

@@ -394,7 +394,6 @@
                         <div x-show="open" class="pl-12 py-2 space-y-1 bg-slate-900/50 relative sidebar-sub-nav">
                             <div class="absolute left-[38px] top-0 bottom-0 w-px bg-slate-800"></div>
                             <a href="{{ url('/reports') }}" class="sub-nav-item {{ request()->routeIs('reports.index') ? 'active' : '' }}">Comprehensive Reports</a>
-                            <a href="{{ url('/inventory/analytics') }}" class="sub-nav-item {{ request()->routeIs('inventory.analytics') ? 'active' : '' }}">Inventory Analytics</a>
                         </div>
                     </div>
 
@@ -416,6 +415,7 @@
                         <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
                             <a href="{{ url('/admin/settings') }}" class="sub-nav-item {{ request()->is('admin/settings*') ? 'active' : '' }}">General Settings</a>
                             <a href="{{ url('/admin/constants') }}" class="sub-nav-item {{ request()->is('admin/constants*') ? 'active' : '' }}">System Constants</a>
+                            <a href="{{ url('/admin/imports') }}" class="sub-nav-item {{ request()->is('admin/imports*') ? 'active' : '' }}">Bulk Data Imports</a>
                             <a href="{{ url('/admin/users') }}"    class="sub-nav-item {{ request()->is('admin/users*') ? 'active' : '' }}">Users</a>
                             <a href="{{ url('/admin/roles') }}"    class="sub-nav-item {{ request()->is('admin/roles*') ? 'active' : '' }}">Roles & Permissions</a>
                         </div>

@@ -332,7 +332,8 @@ The SCM ERP incorporates advanced Artificial Intelligence capabilities designed 
 - **CRM Kanban Board:** Beautiful lead capture columns ("New", "Contacted", "Proposal", "Negotiation", "Won", "Lost") to track opportunities.
 - **CRM Details Overlay:** High-fidelity opportunity detail modal with chronological interaction logs, A4 lead sheet printing, and direct SCM conversions.
 - **Quotation Kanban Board:** Interactive, drag-and-drop quotation pipeline (`Draft`, `Sent`, `Accepted`, `Rejected`) with live deal volume trackers.
-- **SCM Cascade Engine:** Automatic conversion of `Accepted` quotes into standard B2B Sales Orders and Milestones Projects with bin-level material reservations.
+- **CRM Opportunity Converter:** One-click conversion from CRM Lead to draft Quotations with automatic `QuotationItem` line items, stage changes to `proposal` (60% probability), and CRM activity logging.
+- **SCM Cascade Engine:** Automatic conversion of `Accepted` quotes into standard B2B Sales Orders, mapping polymorphic contacts and billing/shipping address IDs, updating linked leads to `won` (100% probability), and initiating bin-level material reservations.
 - **A4 Corporate Letterhead Isolation**: Native print isolator overlays and SHA-256 ERP verification hashes for invoices, quotations, and project files.
 - **Lead Auto-Conversion:** Instantly convert won leads into Customer Profiles and draft Quotations.
 - **Quotation Engine:** Dynamic tax, discount, and landed cost estimations.
@@ -351,6 +352,8 @@ The SCM ERP incorporates advanced Artificial Intelligence capabilities designed 
 - **Interactive Invoice CRUD:** Full invoice editing, deleting, dynamic detail sheets, and custom PDF generator.
 - **Accounts Payable (AP):** Track supplier bills, split payments, and upload receipts.
 - **Accounts Receivable (AR):** Manage customer invoices, split payments, and record transactions.
+- **Bidirectional Payment Sync**: Accounts Receivable dynamically updates linked Invoices upon payment logs. Invoices propagate manual toggles back to receivables, and automatically create a `PaymentLog` entry for any outstanding balance when marked `paid`.
+- **Self-Healing Payment Observers**: Static `PaymentLog` lifecycle hooks automatically recalculate and update parent receivable/payable balances and statuses (`paid`, `partial`, `unpaid`) upon saves or deletions, preventing stale data.
 - **Outstanding Progress Bar:** Dynamic, real-time receivables status meter in the primary SCM dashboard.
 - **Payment Certificate Compiler:** Generates custom-itemized corporate receipts for selected payments in PDF format.
 

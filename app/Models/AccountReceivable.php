@@ -10,6 +10,21 @@ class AccountReceivable extends Model
 
     protected $fillable = ['invoice_id', 'customer_id', 'amount', 'status', 'attachment_path'];
 
+    protected static function booted()
+    {
+        static::saved(function ($receivable) {
+            if ($receivable->invoice_id) {
+                $invoice = Invoice::find($receivable->invoice_id);
+                if ($invoice) {
+                    $newStatus = $receivable->status === 'paid' ? 'paid' : ($receivable->status === 'partial' ? 'partial' : 'unpaid');
+                    if ($invoice->status !== $newStatus) {
+                        $invoice->update(['status' => $newStatus]);
+                    }
+                }
+            }
+        });
+    }
+
     public function salesOrder()
     {
         return $this->belongsTo(SalesOrder::class);
