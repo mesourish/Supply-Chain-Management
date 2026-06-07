@@ -21,7 +21,7 @@ This file serves as the core memory and AI context for the Supply Chain Manageme
 ## Core Modules (Implemented)
 1. **RBAC (Admin):** Super Admin (bypass all), customizable roles with fine-grained granular permissions per module.
 2. **Settings (Admin):** General Info, Localization (Timezone, Date Format, Currency), System & Procurement (Default GST, Map coordinates, Terms & Conditions, PO prefixes).
-3. **Procurement:** RFQ, Purchase Orders (with GST breakups, Remarks, Terms & Conditions dynamically injected from Settings), Goods Receipt Note (GRN).
+3. **Procurement:** RFQ, Purchase Orders (with GST breakups, Remarks, Terms & Conditions dynamically injected from Settings), Goods Receipt Note (GRN) with linked manufacturing demand checks.
 4. **Inventory & WMS:** Multi-warehouse, Bin mapping, stock transactions, Bin transfers, Inventory Analytics Dashboard with ECharts DFD Sankey charts.
 5. **Order Management:** Quotations, Sales Orders, Shipments, dynamic pricing, Pick-Pack-Ship workflows.
 6. **Finance:** Expenses, Accounts Payable (AP), Accounts Receivable (AR), Payment Certificates, Invoices with Corporate Letterhead rendering.
@@ -29,13 +29,15 @@ This file serves as the core memory and AI context for the Supply Chain Manageme
 8. **HRMS:** Human Resource Management System for attendance, leaves, payroll processing, and employee lifecycle management.
 9. **Reverse Logistics:** Return Requests (RMA), Condition evaluation (Good/Damaged), and automatic Inventory Restocking workflows (`BinProductStock` handling).
 10. **CRM & Projects:** Lead management, Pipeline tracking, Project milestones, and interconnected dependencies.
+11. **Manufacturing (BOM & MO):** Bill of Materials recipe configurations, Manufacturing Orders pipeline stages (`Draft`, `Confirmed`, `In Progress`, `Quality Check`, `Completed`), and automatic component inventory deductions/yield increments on order completion.
+12. **Quality Control (QC):** Inspection holds triggered automatically on cargo receipt and manufacturing production, inspector feedback consoles, and clearance releases.
 
 ## Key Implementations & Rules
-- **Seeding:** The `RealisticDataSeeder` handles end-to-end relational mapping for the entire ERP to ensure complex DFDs and maps reflect real-world data without UNIQUE constraint violations. Re-seeding should use `php artisan migrate:fresh --seed`.
+- **Seeding:** The `RealLifeDataSeeder` handles end-to-end relational mapping for the entire ERP using cohesive real-world narrative data (TechVenture Solutions Inc. acquiring Enterprise Server Racks) matching the user manuals. All old, fragmented seeder files have been removed from the repository. Re-seeding uses `php artisan db:seed` or `php artisan migrate:fresh --seed`.
 - **Navigation Flow:** Sidebars use robust AlpineJS state management (`x-data="{ sidebarOpen: true, inventoryOpen: request()->is('inventory*'), ... }"`) to keep correct menus open.
 - **Document Formatting:** Purchase Orders, Sales Orders, and Invoices dynamically render corporate letterheads, prefixes, dates (`Y-m-d H:i` formatting via settings), and statuses natively via Livewire `show.blade.php` pages.
 - **Polymorphic Address lifecycle hooks:** `Customer` and `Supplier` models use static `booted()` listeners to automatically create or update morphMany `addresses` table entries when their flat address columns are saved, eliminating profile omissions and validation bottlenecks.
-- **Double-Entry Ledger Observers:** Static observers in `PaymentLog`, `AccountReceivable`, and `Invoice` execute a self-healing cascade to recalculate balances and sync statuses (`paid`, `partial`, `unpaid`) dynamically across modules without N+1 query bottlenecks.
+- **Double-Entry Ledger Observers:** Static observers in `PaymentLog`, `AccountReceivable`, and `Invoice` execute a self-healing cascade to recalculate balances and sync statuses (`paid`, `partial`, `unpaid`) dynamically across modules. Double-entry accounting registers detailed debit and credit lines across general ledger accounts (Assets, Liabilities, Receivables, Payables, Revenue) automatically during operational processes.
 - **Tooling rules:** No placeholder charts! All visual charts use ECharts CDN.
 
 ## Current Status
@@ -43,5 +45,7 @@ This file serves as the core memory and AI context for the Supply Chain Manageme
 - Fully deployed and functional with localized branding and robust GST financial engines.
 - HRMS module and Logistics map integrations are live.
 - CRM conversion flows (Leads -> Quotations -> Sales Orders) with automatic address/contact and quote item mappings are fully implemented and verified.
-- Continuous polish and optimizations are applied iteratively across UI components to match "Senior Developer" grade quality.
-- **Tests Validation**: Appended advanced feature integration suites in `ComprehensiveModulesTest.php` with all 44 tests and 197 assertions 100% green.
+- Manufacturing recipe building and shop-floor pipelines with inventory shortage checks are fully integrated with the sidebar.
+- Quality Control holds and General Ledger postings are automatically wired to procurement/manufacturing order milestones.
+- Standard User Manual files (`user_manual.pdf` & `user_manual.docx`) are compiled and downloadable from the interactive FAQ screen (`/faq`).
+- **Tests Validation**: Expanded integration test suite to cover all upgrades. All 84 test assertions passed 100% green.

@@ -411,7 +411,7 @@ new class extends Component {
                 @forelse($supplier->purchaseOrders as $order)
                 <tr>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-600">
-                        <a href="{{ route('purchase-orders.show', $order->id) }}" wire:navigate>
+                        <a href="{{ route('purchase-orders.index', ['edit_id' => $order->id]) }}" wire:navigate>
                             {{ setting('sales_order_prefix', 'PO-') }}{{ str_pad($order->id, 5, '0', STR_PAD_LEFT) }}
                         </a>
                     </td>
@@ -428,7 +428,7 @@ new class extends Component {
                         {{ setting('currency_symbol', '$') }}{{ number_format($order->total_amount, 2) }}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <a href="{{ route('purchase-orders.show', $order->id) }}" wire:navigate class="text-indigo-600 hover:text-indigo-900">View Details</a>
+                        <a href="{{ route('purchase-orders.index', ['edit_id' => $order->id]) }}" wire:navigate class="text-indigo-600 hover:text-indigo-900">View Details</a>
                     </td>
                 </tr>
                 @empty
@@ -467,7 +467,7 @@ new class extends Component {
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-indigo-600">
                         @if($ap->purchaseOrder)
-                        <a href="{{ route('purchase-orders.show', $ap->purchase_order_id) }}" wire:navigate>
+                        <a href="{{ route('purchase-orders.index', ['edit_id' => $ap->purchase_order_id]) }}" wire:navigate>
                             {{ setting('sales_order_prefix', 'PO-') }}{{ str_pad($ap->purchase_order_id, 5, '0', STR_PAD_LEFT) }}
                         </a>
                         @else

@@ -9,6 +9,7 @@ use App\Models\Expense;
 use App\Models\GoodsReceiptNote;
 use App\Models\InventoryTransaction;
 use App\Models\Product;
+use App\Models\BinProductStock;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -351,18 +352,18 @@ new class extends Component {
                 
                 <div class="p-6">
                     @if(in_array($reportType, ['tax_return', 'gst_vat']) && isset($taxData))
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                            <div class="bg-indigo-50 rounded-2xl p-6 border border-indigo-100">
-                                <span class="text-indigo-600 text-xs font-black uppercase tracking-wider">Sales Tax Collected</span>
-                                <h3 class="text-3xl font-black text-indigo-900 mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($taxData['sales_tax_collected'], 2) }}</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+                            <div class="bg-indigo-50 rounded-2xl p-6 border border-indigo-100 transition-all hover:shadow-md">
+                                <span class="text-indigo-600 text-xs font-bold uppercase tracking-wider block">Sales Tax Collected</span>
+                                <h3 class="text-xl md:text-2xl font-extrabold text-indigo-900 mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($taxData['sales_tax_collected'], 2) }}</h3>
                             </div>
-                            <div class="bg-rose-50 rounded-2xl p-6 border border-rose-100">
-                                <span class="text-rose-600 text-xs font-black uppercase tracking-wider">Purchase Tax Paid</span>
-                                <h3 class="text-3xl font-black text-rose-900 mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($taxData['purchase_tax_paid'], 2) }}</h3>
+                            <div class="bg-rose-50 rounded-2xl p-6 border border-rose-100 transition-all hover:shadow-md">
+                                <span class="text-rose-600 text-xs font-bold uppercase tracking-wider block">Purchase Tax Paid</span>
+                                <h3 class="text-xl md:text-2xl font-extrabold text-rose-900 mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($taxData['purchase_tax_paid'], 2) }}</h3>
                             </div>
-                            <div class="bg-emerald-50 rounded-2xl p-6 border border-emerald-100">
-                                <span class="text-emerald-600 text-xs font-black uppercase tracking-wider">Net Tax Liability</span>
-                                <h3 class="text-3xl font-black text-emerald-900 mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($taxData['net_tax_liability'], 2) }}</h3>
+                            <div class="bg-emerald-50 rounded-2xl p-6 border border-emerald-100 transition-all hover:shadow-md">
+                                <span class="text-emerald-600 text-xs font-bold uppercase tracking-wider block">Net Tax Liability</span>
+                                <h3 class="text-xl md:text-2xl font-extrabold text-emerald-900 mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($taxData['net_tax_liability'], 2) }}</h3>
                             </div>
                         </div>
                         <div class="text-sm text-gray-600">
@@ -387,7 +388,7 @@ new class extends Component {
                                     @forelse($invoices as $inv)
                                         <tr class="border-b border-gray-100 hover:bg-gray-50 text-sm">
                                             <td class="py-3 px-4 font-bold text-indigo-600">INV-{{ str_pad($inv->id, 5, '0', STR_PAD_LEFT) }}</td>
-                                            <td class="py-3 px-4">{{ Carbon\Carbon::parse($inv->issue_date)->format('M d, Y') }}</td>
+                                            <td class="py-3 px-4">{{ Carbon::parse($inv->issue_date)->format('M d, Y') }}</td>
                                             <td class="py-3 px-4">{{ $inv->salesOrder->customer->name ?? 'N/A' }}</td>
                                             <td class="py-3 px-4 text-right">{{ setting('currency_symbol', '$') }}{{ number_format($inv->tax_amount ?? 0, 2) }}</td>
                                             <td class="py-3 px-4 text-right font-bold">{{ setting('currency_symbol', '$') }}{{ number_format($inv->amount, 2) }}</td>
@@ -686,28 +687,36 @@ new class extends Component {
                             <span class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">🤖 AI Corporate Cash Runway & Financial Burn-Rate Predictor</span>
                         </div>
                         
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                            <div class="bg-indigo-50/50 rounded-2xl p-6 border border-indigo-150">
-                                <span class="text-indigo-600 text-xs font-black uppercase tracking-wider">Corporate Available Cash</span>
-                                <h3 class="text-3xl font-black text-indigo-900 mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($cashRunwayData['current_cash'], 2) }}</h3>
-                            </div>
-                            <div class="bg-rose-50/50 rounded-2xl p-6 border border-rose-150">
-                                <span class="text-rose-600 text-xs font-black uppercase tracking-wider">Average Monthly Spend</span>
-                                <h3 class="text-3xl font-black text-rose-900 mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($cashRunwayData['monthly_spend'], 2) }}</h3>
-                            </div>
-                            <div class="bg-emerald-50/50 rounded-2xl p-6 border border-emerald-150">
-                                <span class="text-emerald-600 text-xs font-black uppercase tracking-wider">Average Monthly Income</span>
-                                <h3 class="text-3xl font-black text-emerald-900 mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($cashRunwayData['monthly_revenue'], 2) }}</h3>
-                            </div>
-                            <div class="bg-amber-50/50 rounded-2xl p-6 border border-amber-150">
-                                <span class="text-amber-600 text-xs font-black uppercase tracking-wider">Predictive Runway</span>
-                                <h3 class="text-3xl font-black text-amber-900 mt-2">
-                                    @if(is_numeric($cashRunwayData['runway_months']))
-                                        {{ $cashRunwayData['runway_months'] }} Months
-                                    @else
-                                        {{ $cashRunwayData['runway_months'] }}
-                                    @endif
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                            <div class="bg-indigo-50/50 rounded-2xl p-6 border border-indigo-150 transition-all hover:shadow-md">
+                                <span class="text-indigo-600 text-xs font-bold uppercase tracking-wider block">Corporate Available Cash</span>
+                                <h3 class="text-xl md:text-2xl font-extrabold text-indigo-900 mt-2 truncate" title="{{ setting('currency_symbol', '$') }}{{ number_format($cashRunwayData['current_cash'], 2) }}">
+                                    {{ setting('currency_symbol', '$') }}{{ number_format($cashRunwayData['current_cash'], 2) }}
                                 </h3>
+                            </div>
+                            <div class="bg-rose-50/50 rounded-2xl p-6 border border-rose-150 transition-all hover:shadow-md">
+                                <span class="text-rose-600 text-xs font-bold uppercase tracking-wider block">Average Monthly Spend</span>
+                                <h3 class="text-xl md:text-2xl font-extrabold text-rose-900 mt-2 truncate" title="{{ setting('currency_symbol', '$') }}{{ number_format($cashRunwayData['monthly_spend'], 2) }}">
+                                    {{ setting('currency_symbol', '$') }}{{ number_format($cashRunwayData['monthly_spend'], 2) }}
+                                </h3>
+                            </div>
+                            <div class="bg-emerald-50/50 rounded-2xl p-6 border border-emerald-150 transition-all hover:shadow-md">
+                                <span class="text-emerald-600 text-xs font-bold uppercase tracking-wider block">Average Monthly Income</span>
+                                <h3 class="text-xl md:text-2xl font-extrabold text-emerald-900 mt-2 truncate" title="{{ setting('currency_symbol', '$') }}{{ number_format($cashRunwayData['monthly_revenue'], 2) }}">
+                                    {{ setting('currency_symbol', '$') }}{{ number_format($cashRunwayData['monthly_revenue'], 2) }}
+                                </h3>
+                            </div>
+                            <div class="bg-amber-50/50 rounded-2xl p-6 border border-amber-150 transition-all hover:shadow-md">
+                                <span class="text-amber-600 text-xs font-bold uppercase tracking-wider block">Predictive Runway</span>
+                                @if(is_numeric($cashRunwayData['runway_months']))
+                                    <h3 class="text-xl md:text-2xl font-extrabold text-amber-900 mt-2">
+                                        {{ $cashRunwayData['runway_months'] }} Months
+                                    </h3>
+                                @else
+                                    <h3 class="text-sm md:text-base font-bold text-amber-950 mt-2 leading-snug">
+                                        {{ $cashRunwayData['runway_months'] }}
+                                    </h3>
+                                @endif
                             </div>
                         </div>
 

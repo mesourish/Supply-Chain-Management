@@ -48,6 +48,15 @@ class Invoice extends Model
                     }
                 }
             }
+
+            if ($invoice->wasRecentlyCreated) {
+                try {
+                    \App\Helpers\AccountingJournalHelper::postInvoiceIssued($invoice);
+                } catch (\Exception $e) {
+                    // Fail-safe logging
+                    \Illuminate\Support\Facades\Log::error("Invoice GL posting failed: " . $e->getMessage());
+                }
+            }
         });
     }
 

@@ -9,8 +9,16 @@ new class extends Component {
     use WithPagination;
 
     public $sku, $barcode, $name, $category, $brand, $description, $unit_of_measure = 'pcs', $weight, $cost_price = 0, $unit_price = 0, $reorder_level = 10, $lead_time_days = 7, $velocity = 0;
+    public $product_type = 'storable', $route = 'buy', $min_stock = 0, $max_stock = 0;
     public $isEditing = false;
     public $productId = null;
+    public $search = '';
+
+    public function updatingSearch()
+    {
+        $this->resetPage();
+    }
+
 
     public function rules()
     {
@@ -19,6 +27,8 @@ new class extends Component {
             'barcode' => 'nullable|string|unique:products,barcode,' . $this->productId,
             'name' => 'required|string',
             'category' => 'nullable|string',
+            'product_type' => 'required|in:storable,consumable,service',
+            'route' => 'required|in:manufacture,buy,buy_and_sell,make_to_order,drop_ship,service',
             'brand' => 'nullable|string',
             'description' => 'nullable|string',
             'unit_of_measure' => 'required|string',
@@ -26,12 +36,24 @@ new class extends Component {
             'cost_price' => 'required|numeric|min:0',
             'unit_price' => 'required|numeric|min:0',
             'reorder_level' => 'required|integer|min:0',
+            'min_stock' => 'required|numeric|min:0',
+            'max_stock' => 'required|numeric|min:0',
             'lead_time_days' => 'required|integer|min:1',
         ];
     }
 
+    public function mount()
+    {
+        if (!auth()->user()->can('view products')) abort(403);
+    }
+
     public function save()
     {
+        if ($this->productId) {
+            if (!auth()->user()->can('edit products')) abort(403);
+        } else {
+            if (!auth()->user()->can('create products')) abort(403);
+        }
         $this->validate();
 
         Product::updateOrCreate(
@@ -41,6 +63,8 @@ new class extends Component {
                 'barcode' => $this->barcode,
                 'name' => $this->name,
                 'category' => $this->category,
+                'product_type' => $this->product_type,
+                'route' => $this->route,
                 'brand' => $this->brand,
                 'description' => $this->description,
                 'unit_of_measure' => $this->unit_of_measure,
@@ -48,6 +72,8 @@ new class extends Component {
                 'cost_price' => $this->cost_price,
                 'unit_price' => $this->unit_price,
                 'reorder_level' => $this->reorder_level,
+                'min_stock' => $this->min_stock,
+                'max_stock' => $this->max_stock,
                 'lead_time_days' => $this->lead_time_days ?? 7,
             ]
         );
@@ -58,6 +84,7 @@ new class extends Component {
 
     public function edit($id)
     {
+        if (!auth()->user()->can('edit products')) abort(403);
         $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         $product = Product::findOrFail($id);
         $this->productId = $id;
@@ -65,6 +92,8 @@ new class extends Component {
         $this->barcode = $product->barcode;
         $this->name = $product->name;
         $this->category = $product->category;
+        $this->product_type = $product->product_type ?? 'storable';
+        $this->route = $product->route ?? 'buy';
         $this->brand = $product->brand;
         $this->description = $product->description;
         $this->unit_of_measure = $product->unit_of_measure;
@@ -72,6 +101,8 @@ new class extends Component {
         $this->cost_price = $product->cost_price;
         $this->unit_price = $product->unit_price;
         $this->reorder_level = $product->reorder_level;
+        $this->min_stock = $product->min_stock ?? 0;
+        $this->max_stock = $product->max_stock ?? 0;
         $this->lead_time_days = $product->lead_time_days ?? 7;
         $this->velocity = $product->velocity ?? 0;
         $this->isEditing = true;
@@ -79,6 +110,7 @@ new class extends Component {
 
     public function delete($id)
     {
+        if (!auth()->user()->can('delete products')) abort(403);
         Product::find($id)->delete();
         $this->dispatch('toast', type: 'success', message:  'Product Deleted Successfully.');
     }
@@ -89,6 +121,8 @@ new class extends Component {
         $this->barcode = '';
         $this->name = '';
         $this->category = '';
+        $this->product_type = 'storable';
+        $this->route = 'buy';
         $this->brand = '';
         $this->description = '';
         $this->unit_of_measure = 'pcs';
@@ -96,6 +130,8 @@ new class extends Component {
         $this->cost_price = 0;
         $this->unit_price = 0;
         $this->reorder_level = 10;
+        $this->min_stock = 0;
+        $this->max_stock = 0;
         $this->lead_time_days = 7;
         $this->velocity = 0;
         $this->productId = null;
@@ -105,7 +141,15 @@ new class extends Component {
     public function with()
     {
         return [
-            'products' => Product::latest()->paginate(10),
+            'products' => Product::when(trim($this->search), function($query) {
+                $query->where(function($q) {
+                    $q->where('sku', 'like', '%' . $this->search . '%')
+                      ->orWhere('barcode', 'like', '%' . $this->search . '%')
+                      ->orWhere('name', 'like', '%' . $this->search . '%')
+                      ->orWhere('brand', 'like', '%' . $this->search . '%')
+                      ->orWhere('category', 'like', '%' . $this->search . '%');
+                });
+            })->latest()->paginate(10),
             'categories' => SystemConstant::where('type', 'product_category')->where('is_active', true)->orderBy('name')->get(),
         ];
     }
@@ -150,6 +194,27 @@ new class extends Component {
                         <x-input-error :messages="$errors->get('category')" class="mt-2" />
                     </div>
                     <div>
+                        <x-input-label for="product_type" value="Product Type *" />
+                        <select wire:model="product_type" id="product_type" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm" required>
+                            <option value="storable">Storable Product (Inventory)</option>
+                            <option value="consumable">Consumable</option>
+                            <option value="service">Service</option>
+                        </select>
+                        <x-input-error :messages="$errors->get('product_type')" class="mt-2" />
+                    </div>
+                    <div>
+                        <x-input-label for="route" value="Procurement Route *" />
+                        <select wire:model="route" id="route" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm" required>
+                            <option value="buy">Buy (Purchase Order)</option>
+                            <option value="manufacture">Manufacture (BOM / Work Center)</option>
+                            <option value="buy_and_sell">Buy & Sell</option>
+                            <option value="make_to_order">Make-to-Order (MTO)</option>
+                            <option value="drop_ship">Drop Shipping</option>
+                            <option value="service">Service Delivery</option>
+                        </select>
+                        <x-input-error :messages="$errors->get('route')" class="mt-2" />
+                    </div>
+                    <div>
                         <x-input-label for="brand" value="Brand" />
                         <x-text-input wire:model="brand" id="brand" type="text" class="mt-1 block w-full" />
                         <x-input-error :messages="$errors->get('brand')" class="mt-2" />
@@ -182,6 +247,16 @@ new class extends Component {
                         <x-input-error :messages="$errors->get('reorder_level')" class="mt-2" />
                     </div>
                     <div>
+                        <x-input-label for="min_stock" value="Min Safety Stock *" />
+                        <x-text-input wire:model="min_stock" id="min_stock" type="number" step="0.01" class="mt-1 block w-full" required />
+                        <x-input-error :messages="$errors->get('min_stock')" class="mt-2" />
+                    </div>
+                    <div>
+                        <x-input-label for="max_stock" value="Max Stock Limit *" />
+                        <x-text-input wire:model="max_stock" id="max_stock" type="number" step="0.01" class="mt-1 block w-full" required />
+                        <x-input-error :messages="$errors->get('max_stock')" class="mt-2" />
+                    </div>
+                    <div>
                         <x-input-label for="lead_time_days" value="Lead Time (Days) *" />
                         <x-text-input wire:model="lead_time_days" id="lead_time_days" type="number" class="mt-1 block w-full" required />
                         <x-input-error :messages="$errors->get('lead_time_days')" class="mt-2" />
@@ -206,6 +281,10 @@ new class extends Component {
     <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
         <div class="p-6 text-gray-900">
             <h2 class="text-2xl font-semibold mb-4">Product List</h2>
+            
+            <div class="mb-4">
+                <input type="text" wire:model.live.debounce.300ms="search" placeholder="Search by SKU, Name, Barcode, Brand, Category..." class="w-full md:w-1/3 border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm text-sm" />
+            </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
@@ -235,6 +314,7 @@ new class extends Component {
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="text-sm text-gray-900">{{ $product->name }}</div>
                                     <div class="text-xs text-gray-500">{{ $product->category }} &bull; {{ $product->brand }}</div>
+                                    <div class="text-[10px] mt-0.5"><span class="px-1.5 py-0.5 bg-gray-100 text-gray-750 rounded-md uppercase font-bold">{{ $product->product_type }}</span> &bull; <span class="px-1.5 py-0.5 bg-indigo-50 text-indigo-750 rounded-md uppercase font-bold">{{ str_replace('_', ' ', $product->route) }}</span></div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     {{ $product->unit_of_measure }}<br>

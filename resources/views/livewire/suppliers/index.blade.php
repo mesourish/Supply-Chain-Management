@@ -25,8 +25,19 @@ new class extends Component {
         ];
     }
 
+    public function mount()
+    {
+        if (!auth()->user()->can('view suppliers')) abort(403);
+    }
+
     public function save()
     {
+        if ($this->supplierId) {
+            if (!auth()->user()->can('edit suppliers')) abort(403);
+        } else {
+            if (!auth()->user()->can('create suppliers')) abort(403);
+        }
+
         $this->validate();
 
         $isNew = is_null($this->supplierId);
@@ -84,6 +95,7 @@ new class extends Component {
 
     public function edit($id)
     {
+        if (!auth()->user()->can('edit suppliers')) abort(403);
         $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         $supplier = Supplier::findOrFail($id);
         $this->supplierId = $id;
@@ -99,6 +111,7 @@ new class extends Component {
 
     public function delete($id)
     {
+        if (!auth()->user()->can('delete suppliers')) abort(403);
         Supplier::find($id)->delete();
         $this->dispatch('toast', type: 'success', message:  'Supplier Deleted Successfully.');
     }

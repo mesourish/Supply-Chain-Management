@@ -15,6 +15,14 @@ class PaymentLog extends Model
     {
         static::saved(function ($paymentLog) {
             $paymentLog->syncParentBalances();
+
+            if ($paymentLog->wasRecentlyCreated) {
+                try {
+                    \App\Helpers\AccountingJournalHelper::postPaymentLogged($paymentLog);
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error("PaymentLog GL posting failed: " . $e->getMessage());
+                }
+            }
         });
 
         static::deleted(function ($paymentLog) {

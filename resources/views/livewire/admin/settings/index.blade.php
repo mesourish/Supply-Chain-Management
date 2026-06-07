@@ -28,6 +28,7 @@ state([
     'default_gst_type' => 'exclusive',
     'default_po_remarks' => '',
     'default_po_terms' => '',
+    'selectedWipeModules' => [],
 ]);
 
 mount(function () {
@@ -139,12 +140,23 @@ $saveSettings = function () {
 $clearData = function () {
     if (!auth()->user()->hasRole('Super Admin')) abort(403, 'Only Super Admin can clear data.');
 
-    // Call the dedicated artisan command and force it
+    if (empty($this->selectedWipeModules)) {
+        $this->dispatch('toast', type: 'error', message: 'Please select at least one module to wipe.');
+        return;
+    }
+
+    // Call the dedicated artisan command with force and selected modules
     \Illuminate\Support\Facades\Artisan::call('erp:clear-data', [
         '--force' => true,
+        '--modules' => implode(',', $this->selectedWipeModules),
     ]);
 
-    session()->flash('danger_message', 'All operational ERP data (including database records and uploaded files) has been permanently cleared. System settings, users, and roles have been preserved.');
+    $formatted = array_map(function($m) {
+        return ucwords(str_replace('_', ' ', $m));
+    }, $this->selectedWipeModules);
+
+    session()->flash('danger_message', 'Operational data for ' . implode(', ', $formatted) . ' has been permanently cleared. Users, roles, and settings have been preserved.');
+    $this->selectedWipeModules = [];
     $this->showClearDataConfirm = false;
 };
 
@@ -423,22 +435,77 @@ $clearData = function () {
                                 {{ __('Danger Zone: Clear ERP Data') }}
                             </h2>
                             <p class="mt-1 text-sm text-gray-600">
-                                {{ __('This action will wipe all operational data (products, orders, invoices, stock, etc.). Your user accounts, roles, and system settings will NOT be deleted.') }}
+                                {{ __('Select specific modules to wipe operational records from (products, orders, invoices, stock, etc.). Your user accounts, roles, and settings are safe.') }}
                             </p>
                         </header>
-
-                        <div class="mt-6">
-                            <button type="button" wire:click="$set('showClearDataConfirm', true)" class="inline-flex items-center justify-center px-4 py-2 bg-red-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-red-500 active:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition ease-in-out duration-150">
-                                {{ __('Clear All Data') }}
-                            </button>
+ 
+                        <div class="mt-6 space-y-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" wire:model.live="selectedWipeModules" value="sales" class="rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                    <div class="text-xs">
+                                        <span class="font-bold text-gray-800">Sales & CRM</span>
+                                        <span class="block text-[10px] text-gray-400">Orders, Customers, Leads</span>
+                                    </div>
+                                </label>
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" wire:model.live="selectedWipeModules" value="procurement" class="rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                    <div class="text-xs">
+                                        <span class="font-bold text-gray-800">Procurement & RFQs</span>
+                                        <span class="block text-[10px] text-gray-400">Suppliers, POs, RFQs</span>
+                                    </div>
+                                </label>
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" wire:model.live="selectedWipeModules" value="inventory" class="rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                    <div class="text-xs">
+                                        <span class="font-bold text-gray-800">Inventory & Stock</span>
+                                        <span class="block text-[10px] text-gray-400">Products, Warehouses, Stock</span>
+                                    </div>
+                                </label>
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" wire:model.live="selectedWipeModules" value="logistics" class="rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                    <div class="text-xs">
+                                        <span class="font-bold text-gray-800">Logistics & Fleet</span>
+                                        <span class="block text-[10px] text-gray-400">Vehicles, Drivers, Shipments</span>
+                                    </div>
+                                </label>
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" wire:model.live="selectedWipeModules" value="manufacturing" class="rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                    <div class="text-xs">
+                                        <span class="font-bold text-gray-800">Manufacturing & QC</span>
+                                        <span class="block text-[10px] text-gray-400">MOs, BOMs, Quality Checks</span>
+                                    </div>
+                                </label>
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" wire:model.live="selectedWipeModules" value="finance" class="rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                    <div class="text-xs">
+                                        <span class="font-bold text-gray-800">Finance & Accounting</span>
+                                        <span class="block text-[10px] text-gray-400">Invoices, Expenses, GL Entries</span>
+                                    </div>
+                                </label>
+                            </div>
+ 
+                            <div class="flex items-center gap-3 pt-2">
+                                <button type="button" 
+                                        wire:click="$set('showClearDataConfirm', true)" 
+                                        class="inline-flex items-center justify-center px-4 py-2 bg-red-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-red-500 active:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition ease-in-out duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        @if(empty($selectedWipeModules)) disabled @endif>
+                                    {{ __('Clear Selected Data') }}
+                                </button>
+                                <button type="button" 
+                                        wire:click="$set('selectedWipeModules', ['sales', 'procurement', 'inventory', 'logistics', 'manufacturing', 'finance'])"
+                                        class="text-xs font-bold text-slate-500 hover:text-slate-800 transition">
+                                    Select All Modules
+                                </button>
+                            </div>
                         </div>
                     </section>
                 </div>
             </div>
-
+ 
         </div>
     </div>
-
+ 
     <!-- Confirm Modal -->
     @if($showClearDataConfirm)
     <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -454,13 +521,14 @@ $clearData = function () {
                             </svg>
                         </div>
                         <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                            <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Clear All ERP Data</h3>
+                            <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Clear Selected ERP Data</h3>
                             <div class="mt-2">
-                                <p class="text-sm text-gray-500 mb-3">Are you absolutely sure? This will <strong class="text-red-600">permanently delete</strong> all operational records. This action <strong>cannot be undone</strong>.</p>
-                                <p class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">What will be wiped:</p>
-                                <ul class="text-xs text-gray-500 space-y-0.5 list-disc list-inside">
-                                    <li><span class="font-medium text-gray-700">All Database Records:</span> Operational data from all modules (Sales, Procurement, Inventory, Finance, CRM, etc.).</li>
-                                    <li><span class="font-medium text-gray-700">Uploaded Files:</span> Invoices, product images, attachments, and generated PDFs.</li>
+                                <p class="text-sm text-gray-500 mb-3">Are you absolutely sure? This will <strong class="text-red-600">permanently delete</strong> all operational records for the selected modules. This action <strong>cannot be undone</strong>.</p>
+                                <p class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Modules selected for wiping:</p>
+                                <ul class="text-xs text-red-600 space-y-0.5 list-disc list-inside font-bold uppercase tracking-wider mb-3">
+                                    @foreach($selectedWipeModules as $wipeMod)
+                                        <li>{{ ucwords(str_replace('_', ' ', $wipeMod)) }}</li>
+                                    @endforeach
                                 </ul>
                                 <p class="text-xs text-green-700 mt-2">✓ User accounts, roles, permissions, and system settings will <strong>NOT</strong> be deleted.</p>
                             </div>
@@ -469,7 +537,7 @@ $clearData = function () {
                 </div>
                 <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
                     <button type="button" wire:click="clearData" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm">
-                        Yes, wipe everything
+                        Yes, wipe selected modules
                     </button>
                     <button type="button" wire:click="$set('showClearDataConfirm', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
                         Cancel

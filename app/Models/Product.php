@@ -14,6 +14,8 @@ class Product extends Model
         'barcode',
         'name',
         'category',
+        'product_type',
+        'route',
         'brand',
         'description',
         'unit_of_measure',
@@ -21,6 +23,9 @@ class Product extends Model
         'cost_price',
         'unit_price',
         'reorder_level',
+        'min_stock',
+        'max_stock',
+        'image_path',
     ];
 
     public function suppliers()

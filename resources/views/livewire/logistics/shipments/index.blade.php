@@ -42,7 +42,6 @@ new class extends Component {
             ['id' => $this->shipmentId],
             [
                 'sales_order_id' => $this->sales_order_id,
-
                 'vehicle_id' => $this->vehicle_id ?: null,
                 'driver_id' => $this->driver_id ?: null,
                 'status' => $this->status,
@@ -57,12 +56,12 @@ new class extends Component {
         );
 
         $this->resetInputFields();
-        $this->dispatch('toast', type: 'success', message:  $this->shipmentId ? 'Shipment Updated Successfully.' : 'Shipment Created Successfully.');
+        $this->dispatch('toast', type: 'success', message: $this->shipmentId ? 'Shipment Updated Successfully.' : 'Shipment Created Successfully.');
     }
 
     public function edit($id)
     {
-        $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
+        $this->dispatch('toast', type: 'success', message: 'Details loaded successfully.');
         if (!auth()->user()->can('edit shipments')) abort(403);
         $shipment = Shipment::findOrFail($id);
         $this->shipmentId = $id;
@@ -84,7 +83,7 @@ new class extends Component {
     {
         if (!auth()->user()->can('delete shipments')) abort(403);
         Shipment::find($id)->delete();
-        $this->dispatch('toast', type: 'success', message:  'Shipment Deleted Successfully.');
+        $this->dispatch('toast', type: 'success', message: 'Shipment Deleted Successfully.');
     }
 
     public function resetInputFields()
@@ -116,217 +115,287 @@ new class extends Component {
     }
 }; ?>
 
-<div>
+<div class="relative min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-50/20 text-slate-800" x-data="shipmentMap()">
+    <!-- Leaflet CSS loaded dynamically -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 py-8" x-data="shipmentMap()">
-        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
-            <div class="p-6 text-gray-900">
-                <h2 class="text-2xl font-semibold mb-4">{{ $isEditing ? 'Edit Shipment' : 'Create Shipment' }}</h2>
 
-                
+    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 py-8">
+        <!-- Header Banner -->
+        <div class="relative rounded-3xl overflow-hidden mb-8 shadow-xl bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 p-8 flex flex-col md:flex-row justify-between items-center gap-6 border border-indigo-200/10">
+            <div class="z-10 text-center md:text-left">
+                <span class="px-3 py-1 text-xs font-semibold bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30 uppercase tracking-widest">Logistics</span>
+                <h1 class="text-4xl font-extrabold text-white mt-3 tracking-tight">Shipment Control Center</h1>
+                <p class="text-indigo-200/70 text-sm mt-1 max-w-xl">Create customer shipments, manage active delivery routes, and track fleet IoT telemetry in real-time.</p>
+            </div>
+            <div class="z-10 flex gap-3">
+                <a href="{{ url('/logistics/vehicles') }}" class="bg-indigo-600 hover:bg-indigo-750 text-white font-semibold text-xs px-4 py-2.5 rounded-lg shadow-md hover:shadow-lg transition duration-200 flex items-center gap-2 border border-indigo-500/30">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"></path></svg>
+                    Go to Command Center
+                </a>
+            </div>
+            <div class="absolute -right-16 -top-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl"></div>
+            <div class="absolute -left-16 -bottom-16 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl"></div>
+        </div>
 
-                <form wire:submit="save">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Sales Order *</label>
-                            <select wire:model="sales_order_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" required>
-                                <option value="">Select SO</option>
-                                @foreach($salesOrders as $so)
-                                    <option value="{{ $so->id }}">SO #{{ $so->id }} - {{ $so->status }}</option>
-                                @endforeach
-                            </select>
-                            @error('sales_order_id') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Vehicle</label>
-                            <select wire:model="vehicle_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                                <option value="">Unassigned</option>
-                                @foreach($vehicles as $veh)
-                                    <option value="{{ $veh->id }}">{{ $veh->license_plate }} ({{ $veh->type }})</option>
-                                @endforeach
-                            </select>
-                            @error('vehicle_id') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Driver</label>
-                            <select wire:model="driver_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                                <option value="">Unassigned</option>
-                                @foreach($drivers as $dr)
-                                    <option value="{{ $dr->id }}">{{ $dr->user->name ?? 'Unknown' }} - {{ $dr->license_number }}</option>
-                                @endforeach
-                            </select>
-                            @error('driver_id') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Status *</label>
-                            <select wire:model="status" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" required>
-                                <option value="processing">Processing</option>
-                                <option value="dispatched">Dispatched</option>
-                                <option value="in_transit">In Transit</option>
-                                <option value="delivered">Delivered</option>
-                                <option value="cancelled">Cancelled</option>
-                            </select>
-                            @error('status') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Tracking Number</label>
-                            <input wire:model="tracking_number" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                            @error('tracking_number') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Side: Save/Edit Form -->
+            <div class="lg:col-span-1 bg-white border border-slate-200 shadow-sm rounded-3xl p-6 h-fit">
+                <h2 class="text-base font-bold text-slate-800 mb-6 border-b border-slate-100 pb-2 flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+                    {{ $isEditing ? 'Edit Shipment File' : 'Initialize New Shipment' }}
+                </h2>
+
+                <form wire:submit="save" class="space-y-5">
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Sales Order *</label>
+                        <select wire:model="sales_order_id" class="block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs text-slate-850 bg-slate-50/50" required>
+                            <option value="">Select Confirmed SO</option>
+                            @foreach($salesOrders as $so)
+                                <option value="{{ $so->id }}">SO #{{ $so->id }} - {{ strtoupper($so->status) }}</option>
+                            @endforeach
+                        </select>
+                        @error('sales_order_id') <span class="text-rose-500 text-[10px] mt-1 block font-bold">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Assigned Vehicle</label>
+                        <select wire:model="vehicle_id" class="block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs text-slate-850 bg-slate-50/50">
+                            <option value="">Unassigned / Pending</option>
+                            @foreach($vehicles as $veh)
+                                <option value="{{ $veh->id }}">{{ $veh->license_plate }} ({{ $veh->type }} - {{ $veh->brand }})</option>
+                            @endforeach
+                        </select>
+                        @error('vehicle_id') <span class="text-rose-500 text-[10px] mt-1 block font-bold">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Assigned Driver</label>
+                        <select wire:model="driver_id" class="block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs text-slate-850 bg-slate-50/50">
+                            <option value="">Unassigned / Pending</option>
+                            @foreach($drivers as $dr)
+                                <option value="{{ $dr->id }}">{{ $dr->user->name ?? 'Unknown' }} - {{ $dr->license_number }}</option>
+                            @endforeach
+                        </select>
+                        @error('driver_id') <span class="text-rose-500 text-[10px] mt-1 block font-bold">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Shipment Status *</label>
+                        <select wire:model="status" class="block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs text-slate-850 bg-slate-50/50" required>
+                            <option value="processing">Processing</option>
+                            <option value="dispatched">Dispatched</option>
+                            <option value="in_transit">In Transit</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                        @error('status') <span class="text-rose-500 text-[10px] mt-1 block font-bold">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Tracking Number</label>
+                        <input wire:model="tracking_number" type="text" placeholder="e.g. TRK-98319-X" class="block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs text-slate-850 bg-slate-50/50">
+                        @error('tracking_number') <span class="text-rose-500 text-[10px] mt-1 block font-bold">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div class="border-t border-slate-100 pt-4">
+                        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                            Routing Information
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-450 uppercase tracking-widest mb-1">Origin Point</label>
+                                <textarea wire:model="origin_address" rows="2" placeholder="Origin address details" class="block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs text-slate-850 bg-slate-50/50"></textarea>
+                                <div class="flex gap-2 mt-2">
+                                    <input wire:model="origin_lat" type="number" step="0.000001" placeholder="Lat" class="block w-full rounded-xl border-slate-200 shadow-sm text-xs bg-slate-50/50">
+                                    <input wire:model="origin_lng" type="number" step="0.000001" placeholder="Lng" class="block w-full rounded-xl border-slate-200 shadow-sm text-xs bg-slate-50/50">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-450 uppercase tracking-widest mb-1">Destination Point</label>
+                                <textarea wire:model="destination_address" rows="2" placeholder="Destination address details" class="block w-full rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs text-slate-850 bg-slate-50/50"></textarea>
+                                <div class="flex gap-2 mt-2">
+                                    <input wire:model="dest_lat" type="number" step="0.000001" placeholder="Lat" class="block w-full rounded-xl border-slate-200 shadow-sm text-xs bg-slate-50/50">
+                                    <input wire:model="dest_lng" type="number" step="0.000001" placeholder="Lng" class="block w-full rounded-xl border-slate-200 shadow-sm text-xs bg-slate-50/50">
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Logistics / Map Data -->
-                    <div class="mt-6">
-                        <h3 class="text-lg font-medium text-gray-900 mb-2 border-b pb-2">Routing Details</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Origin Address</label>
-                                <textarea wire:model="origin_address" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"></textarea>
-                                <div class="flex gap-2 mt-2">
-                                    <input wire:model="origin_lat" type="number" step="0.00000001" placeholder="Lat" class="block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                                    <input wire:model="origin_lng" type="number" step="0.00000001" placeholder="Lng" class="block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                                </div>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Destination Address</label>
-                                <textarea wire:model="destination_address" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"></textarea>
-                                <div class="flex gap-2 mt-2">
-                                    <input wire:model="dest_lat" type="number" step="0.00000001" placeholder="Lat" class="block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                                    <input wire:model="dest_lng" type="number" step="0.00000001" placeholder="Lng" class="block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mt-6 flex items-center gap-4">
-                        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 text-sm font-medium">
+                    <div class="pt-4 flex items-center gap-3">
+                        <button type="submit" class="flex-1 bg-indigo-600 hover:bg-indigo-750 text-white py-2.5 rounded-xl text-xs font-bold shadow-sm transition duration-150">
                             {{ $isEditing ? 'Update Shipment' : 'Save Shipment' }}
                         </button>
                         @if($isEditing)
-                            <button type="button" wire:click="resetInputFields" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 text-sm font-medium">Cancel</button>
+                            <button type="button" wire:click="resetInputFields" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold transition duration-150">
+                                Cancel
+                            </button>
                         @endif
                     </div>
                 </form>
             </div>
-        </div>
 
-        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-            <div class="p-6 text-gray-900">
-                <h2 class="text-2xl font-semibold mb-4">Shipments List</h2>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shipment ID / Track#</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sales Order</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Driver / Vehicle</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            @forelse($shipments as $shipment)
+            <!-- Right Side: Shipments List -->
+            <div class="lg:col-span-2 space-y-8">
+                <div class="bg-white border border-slate-200 shadow-sm rounded-3xl overflow-hidden">
+                    <div class="p-6 bg-slate-50 border-b border-slate-200">
+                        <h2 class="text-base font-bold text-slate-800">Shipments Directory</h2>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-slate-200">
+                            <thead class="bg-slate-50/50">
                                 <tr>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="font-medium text-gray-900">SHP-{{ str_pad($shipment->id, 5, '0', STR_PAD_LEFT) }}</div>
-                                        <div class="text-xs text-gray-500">{{ $shipment->tracking_number ?? 'No Tracking' }}</div>
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">SO #{{ $shipment->sales_order_id }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {{ $shipment->driver->user->name ?? 'Unassigned' }}
-                                        <br><span class="text-xs text-gray-500">{{ $shipment->vehicle->license_plate ?? '' }}</span>
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                            {{ in_array($shipment->status, ['delivered']) ? 'bg-green-100 text-green-800' : (in_array($shipment->status, ['processing', 'cancelled']) ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800') }}">
-                                            {{ ucfirst(str_replace('_', ' ', $shipment->status)) }}
-                                        </span>
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        @can('edit shipments')
-                                        <button wire:click="edit({{ $shipment->id }})" class="text-indigo-600 hover:text-indigo-900 mr-3">Edit</button>
-                                        @endcan
-                                        @can('delete shipments')
-                                        <button wire:click="delete({{ $shipment->id }})" wire:confirm="Are you sure?" class="text-red-600 hover:text-red-900">Delete</button>
-                                        @endcan
-                                    </td>
+                                    <th class="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Shipment ID / Tracking</th>
+                                    <th class="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Sales Order</th>
+                                    <th class="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Driver & Vehicle</th>
+                                    <th class="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Status</th>
+                                    <th class="px-6 py-4 text-right text-[10px] font-bold text-slate-500 uppercase tracking-widest">Actions</th>
                                 </tr>
-                            @empty
-                                <tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No shipments found.</td></tr>
-                            @endforelse
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-slate-100">
+                                @forelse($shipments as $shipment)
+                                    <tr class="hover:bg-slate-50/30 transition duration-150">
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <div class="text-xs font-extrabold text-slate-800">SHP-{{ str_pad($shipment->id, 5, '0', STR_PAD_LEFT) }}</div>
+                                            <div class="text-[10px] text-slate-500 font-bold mt-0.5">{{ $shipment->tracking_number ?? 'No Tracking Code' }}</div>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-xs text-slate-650 font-bold">
+                                            SO #{{ $shipment->sales_order_id }}
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <div class="text-xs font-bold text-slate-850">
+                                                {{ $shipment->driver->user->name ?? 'Unassigned Driver' }}
+                                            </div>
+                                            <div class="text-[10px] text-slate-550 mt-0.5 font-semibold">
+                                                {{ $shipment->vehicle->license_plate ?? 'No Vehicle Assigned' }}
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2.5 py-0.5 text-[9px] font-extrabold rounded-full border 
+                                                {{ in_array($shipment->status, ['delivered']) ? 'bg-emerald-50 text-emerald-700 border-emerald-250' : 
+                                                   (in_array($shipment->status, ['processing', 'cancelled']) ? 'bg-amber-50 text-amber-700 border-amber-250' : 
+                                                   'bg-indigo-50 text-indigo-700 border-indigo-250') }}">
+                                                {{ strtoupper(str_replace('_', ' ', $shipment->status)) }}
+                                            </span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-right text-xs font-bold">
+                                            @can('edit shipments')
+                                                <button wire:click="edit({{ $shipment->id }})" class="text-indigo-650 hover:text-indigo-850 mr-3 transition duration-150">Edit</button>
+                                            @endcan
+                                            @can('delete shipments')
+                                                <button wire:click="delete({{ $shipment->id }})" wire:confirm="Are you sure you want to delete this shipment record?" class="text-rose-600 hover:text-rose-800 transition duration-150">Delete</button>
+                                            @endcan
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="5" class="px-6 py-8 text-center text-xs text-slate-400 font-bold">
+                                            No shipment logs matching configuration tags.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Map View -->
+                <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6 overflow-hidden">
+                    <h2 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        Route Optimization & Live IoT Tracking
+                    </h2>
+                    <div id="shipments-map" wire:ignore class="w-full h-96 rounded-2xl shadow-sm border border-slate-200 z-0 bg-slate-50"></div>
                 </div>
             </div>
         </div>
 
-        <!-- Map View -->
-        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mt-6">
-            <div class="p-6 text-gray-900">
-                <h2 class="text-2xl font-semibold mb-4">Route Optimization Map</h2>
-                <div id="shipments-map" wire:ignore class="w-full h-96 rounded-lg shadow-sm border border-gray-200 z-0"></div>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    {{-- Scripts inside root div: Leaflet + Alpine shipmentMap component --}}
+    @once
+    @push('scripts')
+    @endpush
+    @endonce
     <script>
         document.addEventListener('alpine:init', () => {
             Alpine.data('shipmentMap', () => ({
                 map: null,
-                markers: [],
                 init() {
-                    this.map = L.map('shipments-map').setView([0, 0], 2);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    setTimeout(() => {
+                        this.initMap();
+                    }, 200);
+                },
+                initMap() {
+                    if (this.map) return; // prevent double-init
+                    this.map = L.map('shipments-map').setView([25.2048, 55.2708], 9);
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
                         maxZoom: 19,
-                        attribution: '© OpenStreetMap'
+                        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
                     }).addTo(this.map);
-                    
-                    // We'd load shipments and draw markers/polylines here
-                    // Mocking coordinates for demo since DB might be empty
+
                     let shipments = @json($shipments);
                     let bounds = [];
-                    
+
+                    const originIcon = L.divIcon({
+                        html: `<div class="w-5 h-5 bg-indigo-650 rounded-full border-2 border-white shadow flex items-center justify-center text-white text-[9px] font-bold">📤</div>`,
+                        className: '',
+                        iconSize: [20, 20]
+                    });
+
+                    const destIcon = L.divIcon({
+                        html: `<div class="w-5 h-5 bg-rose-500 rounded-full border-2 border-white shadow flex items-center justify-center text-white text-[9px] font-bold">📍</div>`,
+                        className: '',
+                        iconSize: [20, 20]
+                    });
+
                     shipments.forEach((s) => {
                         if (s.origin_lat && s.origin_lng) {
-                            L.marker([s.origin_lat, s.origin_lng]).bindPopup('Origin: ' + s.origin_address).addTo(this.map);
+                            L.marker([s.origin_lat, s.origin_lng], {icon: originIcon}).bindPopup('<b>Origin:</b> ' + s.origin_address).addTo(this.map);
                             bounds.push([s.origin_lat, s.origin_lng]);
                         }
                         if (s.dest_lat && s.dest_lng) {
-                            L.marker([s.dest_lat, s.dest_lng]).bindPopup('Dest: ' + s.destination_address).addTo(this.map);
+                            L.marker([s.dest_lat, s.dest_lng], {icon: destIcon}).bindPopup('<b>Destination:</b> ' + s.destination_address).addTo(this.map);
                             bounds.push([s.dest_lat, s.dest_lng]);
                         }
                         if (s.origin_lat && s.dest_lat) {
-                            L.polyline([[s.origin_lat, s.origin_lng], [s.dest_lat, s.dest_lng]], {color: 'red'}).addTo(this.map);
+                            L.polyline([[s.origin_lat, s.origin_lng], [s.dest_lat, s.dest_lng]], {
+                                color: '#4f46e5',
+                                weight: 3,
+                                opacity: 0.6,
+                                dashArray: '5, 10'
+                            }).addTo(this.map);
                         }
-                        
+
                         // IoT Real-Time Simulation
                         if (s.origin_lat && s.dest_lat && s.status === 'in_transit') {
-                            // Create a moving truck icon
                             let truckIcon = L.divIcon({
                                 className: 'bg-transparent',
-                                html: '<div class="w-8 h-8 bg-indigo-600 rounded-full border-2 border-white shadow flex items-center justify-center"><svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg></div>'
+                                html: '<div class="w-8 h-8 bg-indigo-600 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white text-xs font-bold">🚚</div>'
                             });
                             let movingMarker = L.marker([s.origin_lat, s.origin_lng], {icon: truckIcon}).addTo(this.map);
-                            movingMarker.bindPopup('Live IoT Tracking: Truck ' + (s.vehicle?.license_plate || ''));
-                            
-                            // Animate it towards destination
+                            movingMarker.bindPopup('<b>Live IoT Tracking:</b> Vehicle ' + (s.vehicle?.license_plate || 'Unassigned'));
+
+                            // Animate towards destination
                             let progress = 0;
                             setInterval(() => {
-                                progress += 0.01;
+                                progress += 0.005;
                                 if (progress >= 1) progress = 0;
                                 let lat = s.origin_lat + (s.dest_lat - s.origin_lat) * progress;
                                 let lng = s.origin_lng + (s.dest_lng - s.origin_lng) * progress;
                                 movingMarker.setLatLng([lat, lng]);
-                            }, 500);
+                            }, 300);
                         }
                     });
 
                     if (bounds.length > 0) {
-                        this.map.fitBounds(bounds);
+                        this.map.fitBounds(bounds, { padding: [40, 40] });
                     }
                 }
             }));
         });
     </script>
 </div>
+

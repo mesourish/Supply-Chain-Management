@@ -24,8 +24,18 @@ new class extends Component {
         ];
     }
 
+    public function mount()
+    {
+        if (!auth()->user()->can('view customers')) abort(403);
+    }
+
     public function save()
     {
+        if ($this->customerId) {
+            if (!auth()->user()->can('edit customers')) abort(403);
+        } else {
+            if (!auth()->user()->can('create customers')) abort(403);
+        }
         $this->validate();
 
         Customer::updateOrCreate(
@@ -47,6 +57,7 @@ new class extends Component {
 
     public function edit($id)
     {
+        if (!auth()->user()->can('edit customers')) abort(403);
         $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         $customer = Customer::findOrFail($id);
         $this->customerId = $id;
@@ -62,6 +73,7 @@ new class extends Component {
 
     public function delete($id)
     {
+        if (!auth()->user()->can('delete customers')) abort(403);
         Customer::find($id)->delete();
         $this->dispatch('toast', type: 'success', message:  'Customer Deleted Successfully.');
     }

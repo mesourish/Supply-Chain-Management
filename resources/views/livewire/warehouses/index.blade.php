@@ -25,8 +25,19 @@ new class extends Component {
         ];
     }
 
+    public function mount()
+    {
+        if (!auth()->user()->can('view warehouses')) abort(403);
+    }
+
     public function save()
     {
+        if ($this->warehouseId) {
+            if (!auth()->user()->can('edit warehouses')) abort(403);
+        } else {
+            if (!auth()->user()->can('create warehouses')) abort(403);
+        }
+
         $this->validate();
 
         $data = [
@@ -54,6 +65,7 @@ new class extends Component {
 
     public function edit($id)
     {
+        if (!auth()->user()->can('edit warehouses')) abort(403);
         $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         $warehouse = Warehouse::findOrFail($id);
         $this->warehouseId = $id;
@@ -69,6 +81,7 @@ new class extends Component {
 
     public function delete($id)
     {
+        if (!auth()->user()->can('delete warehouses')) abort(403);
         Warehouse::find($id)->delete();
         $this->dispatch('toast', type: 'success', message:  'Warehouse Deleted Successfully.');
     }

@@ -102,12 +102,13 @@ class CrmQuotationKanbanTest extends TestCase
             ->assertSet('showDetailsModal', true)
             ->assertSet('selectedQuoteId', $quote->id)
             ->call('editQuote', $quote->id)
-            ->assertSet('showEditModal', true)
-            ->set('editNotes', 'Special SCM corporate terms')
-            ->set('editItems', [
+            ->assertSet('isEditing', true)
+            ->assertSet('editQuoteId', $quote->id)
+            ->set('notes', 'Special SCM corporate terms')
+            ->set('items', [
                 ['product_id' => $product->id, 'description' => '', 'quantity' => 10, 'unit_price' => 150.00, 'is_blank' => false]
             ])
-            ->call('updateQuote')
+            ->call('saveQuote')
             ->assertHasNoErrors();
 
         $this->assertEquals('Special SCM corporate terms', $quote->refresh()->notes);

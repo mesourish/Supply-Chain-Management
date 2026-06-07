@@ -13,6 +13,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/pdf/invoice/{invoice}', [PdfExportController::class, 'invoice'])->name('pdf.invoice');
     Route::get('/pdf/sales-order/{order}', [PdfExportController::class, 'salesOrder'])->name('pdf.salesOrder');
     Route::get('/pdf/purchase-order/{order}', [PdfExportController::class, 'purchaseOrder'])->name('pdf.purchaseOrder');
+    Route::get('/pdf/quotation/{quotation}', [PdfExportController::class, 'quotation'])->name('pdf.quotation');
+    Route::get('/pdf/user-manual', [PdfExportController::class, 'userManual'])->name('pdf.manual');
 
     Volt::route('dashboard', 'pages.dashboard')->name('dashboard');
 
@@ -27,6 +29,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('admin/users', 'admin.users')
         ->name('admin.users')
         ->middleware('can:manage users');
+
+    Volt::route('admin/system-logs', 'admin.system-logs')
+        ->name('admin.system-logs')
+        ->middleware('can:view system_logs');
 
     // Inventory Module
     Volt::route('products', 'products.index')->name('products.index');
@@ -48,7 +54,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('purchase-orders.index');
     Volt::route('procurement/grn', 'procurement.grn.index')
         ->name('grn.index');
-    Volt::route('procurement/purchase-orders/{order}', 'procurement.purchase-orders.show')->name('purchase-orders.show');
+    // Volt::route('procurement/purchase-orders/{order}', 'procurement.purchase-orders.show')->name('purchase-orders.show');
 
     // Sales Module
     Volt::route('customers', 'customers.index')->name('customers.index');
@@ -83,9 +89,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('finance/expenses', 'finance.expenses')
         ->name('finance.expenses')
         ->middleware('can:view expenses');
+    Volt::route('finance/ledger', 'finance.ledger')
+        ->name('finance.ledger')
+        ->middleware('can:view general_ledger');
+    Volt::route('finance/accounts', 'finance.accounts')
+        ->name('finance.accounts')
+        ->middleware('can:view general_ledger');
+    Volt::route('quality-checks', 'quality-checks.index')
+        ->name('quality-checks.index')
+        ->middleware('can:view quality_checks');
     Volt::route('finance/payment-certificates', 'finance.payment-certificates')
         ->name('finance.certificates')
         ->middleware('can:view receivables');
+
+    // Manufacturing Modules
+    Volt::route('manufacturing/bom', 'manufacturing.bom.index')
+        ->name('manufacturing.bom.index')
+        ->middleware('can:view manufacturing');
+    Volt::route('manufacturing/orders', 'manufacturing.orders.index')
+        ->name('manufacturing.orders.index')
+        ->middleware('can:view manufacturing');
 
     // Comprehensive Reports Module
     Volt::route('/reports', 'reports.index')->name('reports.index');
@@ -101,11 +124,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Volt::route('admin/imports', 'admin.imports.index')
         ->name('admin.imports');
+
+    // Profile Module
+    Volt::route('profile', 'profile.index')->name('profile');
+    Volt::route('profile/security', 'profile.security')->name('profile.security');
 });
 
-Route::view('profile', 'profile')
-    ->middleware(['auth'])
-    ->name('profile');
 
 require __DIR__.'/auth.php';
 Route::get('/debug-url', function () {
