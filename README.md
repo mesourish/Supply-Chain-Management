@@ -452,8 +452,6 @@ This project is licensed under the terms of the **MIT License**.
 
 ### ⚖️ Custom Modification Clause & Rights
 
-By downloading, copying, modifying, or distributing this software, you agree to the following terms:
-1. **Rights to Download and Modify:** You are granted the full right to download, fork, install, copy, and modify this software without charge for private, corporate, or commercial purposes.
-2. **Responsibility for Custom Updates:** If you perform any updates, customizations, refactoring, or adjustments to this codebase, **you are solely responsible for your own modifications**. 
-3. **Maintenance and Integrity:** The original authors, maintainers, and contributors are under no obligation to support, fix, debug, or merge custom modifications. Any issues, security vulnerabilities, or operational defects introduced by your changes are your sole responsibility.
-4. **"As Is" Warranty:** This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
+By using, distributing, or contributing to this software, you agree to the terms and conditions outlined in the [LICENSE](LICENSE) file. This software is provided "as is", without warranty of any kind, express or implied.
+
+<!-- YOLO achievement unlock commit - Tue Jun  2 15:38:23 IST 2026 -->
