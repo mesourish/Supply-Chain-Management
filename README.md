@@ -1,7 +1,17 @@
-# SCM ERP (Supply Chain Management System)
+# SCM ERP (Supply Chain Management & Enterprise Resource Planning)
 
-## ℹ️ About
-A robust, enterprise-grade Supply Chain Management (SCM) ERP built with **Laravel 11**, **Livewire Volt**, **Alpine.js**, and **Tailwind CSS**. This open-source software provides an end-to-end operational backbone for B2B enterprises, seamlessly connecting Customer Relationship Management (CRM), Sales Quotations, Sales Orders, Procurement (RFQs), multi-zone Warehouse Bins, Fleet Logistics, and Financial Ledgers.
+<div align="center">
+
+[![Laravel 11](https://img.shields.io/badge/Laravel-11.x-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)](https://laravel.com)
+[![Livewire Volt](https://img.shields.io/badge/Livewire-Volt-4e56a6?style=for-the-badge&logo=livewire&logoColor=white)](https://livewire.laravel.com)
+[![Alpine.js](https://img.shields.io/badge/Alpine.js-3.x-77C1D2?style=for-the-badge&logo=alpinedotjs&logoColor=white)](https://alpinejs.dev)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.x-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![License](https://img.shields.io/badge/License-MIT_Plus-indigo?style=for-the-badge)](#-license--open-source-agreement)
+[![User Manual](https://img.shields.io/badge/User_Manual-PDF_|_DOCX-emerald?style=for-the-badge)](#-user-manuals)
+
+A robust, enterprise-grade Supply Chain Management (SCM) ERP built with **Laravel 11**, **Livewire Volt**, **Alpine.js**, and **Tailwind CSS**. This open-source software provides an end-to-end operational backbone for B2B enterprises, seamlessly connecting Customer Relationship Management (CRM), Sales Quotations, Sales Orders, Procurement (RFQs), multi-zone Warehouse Bins, Fleet Logistics, Quality Control (QC), Bill of Materials (BOM) Manufacturing, and General Ledger financial accounting.
+
+</div>
 
 ---
 
@@ -10,7 +20,7 @@ A robust, enterprise-grade Supply Chain Management (SCM) ERP built with **Larave
 Below is an interactive, CSS-animated data pipeline representing how operational data streams seamlessly through the SCM ERP ecosystem. **Hover over nodes** to inspect active transitions.
 
 <div align="center">
-  <img src="docs/pipeline.svg" alt="Active Data Pipeline" width="100%" style="max-width: 900px;">
+  <img src="docs/pipeline.svg" alt="Active Data Pipeline" width="100%" style="max-width: 900px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
 </div>
 
 ---
@@ -120,11 +130,11 @@ graph TD
     P8["P8: General Ledger Ledger & Receipts"]:::process
 
     %% Data Stores (Double Bar / Open boxes)
-    D1[("D1: CRM Opportunities &lt;crm_leads&gt;")]:::datastore
-    D2[("D2: Warehouses & Bins Stocks &lt;bin_product_stocks&gt;")]:::datastore
-    D4[("D4: Accounts Receivable Ledger &lt;account_receivables&gt;")]:::datastore
-    D5[("D5: Accounts Payable Ledger &lt;account_payables&gt;")]:::datastore
-    D6[("D6: Immutable Ledger Logs &lt;inventory_transactions&gt;")]:::datastore
+    D1[("D1: CRM Opportunities <crm_leads>")]:::datastore
+    D2[("D2: Warehouses & Bins Stocks <bin_product_stocks>")]:::datastore
+    D4[("D4: Accounts Receivable Ledger <account_receivables>")]:::datastore
+    D5[("D5: Accounts Payable Ledger <account_payables>")]:::datastore
+    D6[("D6: Immutable Ledger Logs <inventory_transactions>")]:::datastore
 
     %% Data Flows
     Customer -->|Sales Inquiry| P1
@@ -195,9 +205,9 @@ sequenceDiagram
     Note over WMS, SO: Locks stock specifically for fulfillment, ensuring transparent allocations!
 ```
 
-* **CRM Lead Kanban Component:** [leads.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/crm/leads.blade.php) - Manages leads, records client communications, and handles one-click conversions.
-* **Customer Profile Console:** [show.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/customers/show.blade.php) - Displays full order history, Outstanding Accounts Receivables (AR) management, and compiled payment certificates.
-* **Quotation Management Workspace:** [quotations.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/sales/quotations.blade.php) - Itemized quote calculator that automatically converts won estimates into active sales orders.
+* **CRM Lead Kanban Component:** [leads.blade.php](resources/views/livewire/crm/leads.blade.php) - Manages leads, records client communications, and handles one-click conversions.
+* **Customer Profile Console:** [show.blade.php](resources/views/livewire/customers/show.blade.php) - Displays full order history, Outstanding Accounts Receivables (AR) management, and compiled payment certificates.
+* **Quotation Management Workspace:** [quotations.blade.php](resources/views/livewire/sales/quotations.blade.php) - Itemized quote calculator that automatically converts won estimates into active sales orders.
 
 ---
 
@@ -231,8 +241,8 @@ sequenceDiagram
     Fin->>Fin: Update Vendor balance ledger & general ledger
 ```
 
-* **Supplier RFQ Compiler:** [rfqs.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/procurement/rfqs.blade.php) - Requests bids, logs vendor quotes, and translates approved proposals into standard Purchase Orders.
-* **Warehouse Stock Models:** [WarehouseBin.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/app/Models/WarehouseBin.php) & [BinProductStock.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/app/Models/BinProductStock.php) - Tracks real-time quantities across multi-dimensional warehouse coordinate systems.
+* **Supplier RFQ Compiler:** [rfqs.blade.php](resources/views/livewire/procurement/rfqs.blade.php) - Requests bids, logs vendor quotes, and translates approved proposals into standard Purchase Orders.
+* **Warehouse Stock Models:** [WarehouseBin.php](app/Models/WarehouseBin.php) & [BinProductStock.php](app/Models/BinProductStock.php) - Tracks real-time quantities across multi-dimensional warehouse coordinate systems.
 
 ---
 
@@ -263,12 +273,83 @@ sequenceDiagram
     Fin->>Cust: Generate Secure Payment Certificate PDF matching selected data
 ```
 
-* **Receivables Editor & Payments Logs:** [show.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/customers/show.blade.php#L150) - Located inside the Customer Profile view. Allows administrators to modify outstanding receivables and record incoming payments directly.
-* **Payment Certificate Generator:** [show.blade.php](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/resources/views/livewire/customers/show.blade.php#L220) - Allows compiling selected customer payments into a printable/exportable corporate PDF document to verify client transactions.
+* **Receivables Editor & Payments Logs:** [show.blade.php](resources/views/livewire/customers/show.blade.php) - Located inside the Customer Profile view. Allows administrators to modify outstanding receivables and record incoming payments directly.
+* **Payment Certificate Generator:** [show.blade.php](resources/views/livewire/customers/show.blade.php) - Allows compiling selected customer payments into a printable/exportable corporate PDF document to verify client transactions.
 
 ---
 
-## ⚖️ Stock Adjustments vs. Inventory Ledger (SOX & Audit Compliance)
+## 📦 System Modules & Core Capabilities (Module-Wise)
+
+### 1. 🤝 Customer Relationship Management (CRM)
+Directly captures demand signals and manages early client interaction lifecycles before physical supply-chain execution.
+* **CRM Lead Kanban Board:** [leads.blade.php](resources/views/livewire/crm/leads.blade.php) - Features clean columns (`New`, `Contacted`, `Proposal`, `Negotiation`, `Won`, `Lost`) to drag-and-drop active prospects.
+* **High-Fidelity Detail Overlay:** Displays chronological client communication timelines, logs interaction details, and permits exporting a clean A4 PDF Lead Sheet.
+* **Instant Conversion Engine:** Initiates a automated cascade that converts won leads into Customer Profiles and draft Quotations in one click, logging a 60% probability CRM activity entry.
+* **Underlying Database Structures:** [CrmLead.php](app/Models/CrmLead.php) & [CrmActivity.php](app/Models/CrmActivity.php).
+
+### 2. 💼 Commercial Sales & Outbound Orders
+Handles customer facing sales channels, quotation workflows, returns, and billing assets.
+* **Quotation Canvas Workspace:** [quotations.blade.php](resources/views/livewire/sales/quotations.blade.php) - Combines price estimation models, tax coefficients (GST/VAT), discount matrices, and margins. Converts accepted quotes to Sales Orders.
+* **Sales Order Tracker:** [orders/index.blade.php](resources/views/livewire/sales/orders/index.blade.php) - Standardizes outbound fulfillment parameters. Maps polymorphic contacts, sets billing and shipping addresses, and triggers warehouse stock reservations.
+* **Customer Profile Console:** [show.blade.php](resources/views/livewire/customers/show.blade.php) - Centralizes transaction history, compiles invoice logs, tracks receivables, and features a compilation drawer to print official corporate Payment Certificates.
+* **Return Merchandise Authorization (RMA):** [returns/index.blade.php](resources/views/livewire/sales/returns/index.blade.php) - Coordinates customer reverse logistics, logging and routing returned products for quality checks before reintegrating them.
+* **Underlying Database Structures:** [Quotation.php](app/Models/Quotation.php), [SalesOrder.php](app/Models/SalesOrder.php), [Customer.php](app/Models/Customer.php), & [ReturnRequest.php](app/Models/ReturnRequest.php).
+
+### 3. 🏢 Procurement & Supplier Sourcing
+Coordinates vendor profiles and manages inbound stock procurement activities.
+* **Supplier Directory:** [suppliers/index.blade.php](resources/views/livewire/suppliers/index.blade.php) - Registers vendors, active catalogues, delivery lead-times, and main office coordinates.
+* **Supplier RFQ Compiler:** [rfqs.blade.php](resources/views/livewire/procurement/rfqs.blade.php) - Sends electronic Requests for Quotations to multiple vendors, tracks incoming bid prices/delivery frames, and awards POs.
+* **Purchase Order (PO) Engine:** [purchase-orders/index.blade.php](resources/views/livewire/procurement/purchase-orders/index.blade.php) - Tracks PO lifecycle states (`Draft`, `Sent`, `Approved`, `Completed`). Automatically draft POs when stock falls below reorder parameters.
+* **Goods Receipt Notes (GRN):** [grn/index.blade.php](resources/views/livewire/procurement/grn/index.blade.php) - Premium cargo intake panels featuring progressive completion loading bars, raw material quantity inspectors, and shortage indicators.
+* **Underlying Database Structures:** [Supplier.php](app/Models/Supplier.php), [Rfq.php](app/Models/Rfq.php), [RfqBid.php](app/Models/RfqBid.php), [PurchaseOrder.php](app/Models/PurchaseOrder.php), & [GoodsReceiptNote.php](app/Models/GoodsReceiptNote.php).
+
+### 4. 🏭 Warehouse Management System (WMS) & Stock
+Maps physical inventory locations and manages stock adjustments.
+* **Hierarchical Coordinates Grid:** [warehouses/index.blade.php](resources/views/livewire/warehouses/index.blade.php) - Models locations in spatial dimensions (`Warehouse -> Zone -> Rack -> Bin`).
+* **Bin-to-Bin Stock Transfer Engine:** [adjustments.blade.php](resources/views/livewire/inventory/adjustments.blade.php) - Fully transaction-guaranteed transfer engine that verifies source balance, conducts atomic double-entry quantity updates, and creates audit logs.
+* **Inventory Audit Ledger:** [log.blade.php](resources/views/livewire/inventory/log.blade.php) - An immutable, read-only audit log tracking every inventory transaction, transfer, and adjustments event with origin tracking (GRNs, Shipments, MOs).
+* **Stock Take Console:** [stock-take/index.blade.php](resources/views/livewire/warehouses/stock-take/index.blade.php) - Facilitates cyclical physical stock counts, registering variances and generating adjustments to correct discrepancies.
+* **Underlying Database Structures:** [Warehouse.php](app/Models/Warehouse.php), [WarehouseBin.php](app/Models/WarehouseBin.php), [BinProductStock.php](app/Models/BinProductStock.php), [InventoryTransaction.php](app/Models/InventoryTransaction.php), & [StockTake.php](app/Models/StockTake.php).
+
+### 5. 🛠️ Manufacturing & Bill of Materials (BOM)
+Orchestrates raw materials assembly into finished products.
+* **BOM Recipe Builder:** [bom/index.blade.php](resources/views/livewire/manufacturing/bom/index.blade.php) - Features a drawer layout to detail finished goods components, quantities, and work center resources.
+* **Manufacturing Orders (MO) Tracker:** [orders/index.blade.php](resources/views/livewire/manufacturing/orders/index.blade.php) - Monitors production runs through stage pipelines (`Draft`, `Confirmed`, `In Progress`, `Quality Check`, `Completed`).
+* **Cascade Deduction Engine:** Automated system checks component availability before release. Upon completion, it automatically decrements raw components from source bins, increments finished goods stocks, flags quality holds, and records general ledger journal lines.
+* **Underlying Database Structures:** [BillOfMaterial.php](app/Models/BillOfMaterial.php), [BomItem.php](app/Models/BomItem.php), & [ManufacturingOrder.php](app/Models/ManufacturingOrder.php).
+
+### 6. 🔬 Quality Control & Compliance (QC)
+Enforces corporate quality standards and halts defective inventory distribution.
+* **Automated Compliance Holds:** Completed manufacturing orders and incoming GRN supplier deliveries automatically lock down under pending inspection.
+* **QC Inspector Console:** [quality-checks/index.blade.php](resources/views/livewire/quality-checks/index.blade.php) - Interactive verification panel to inspect products, log defects, upload comments, and log passed/failed verdicts.
+* **Release Flow:** Passed verdicts automatically release stock to active warehouse bins, while failed verdicts transfer items to quarantine areas or raise RMAs.
+* **Underlying Database Structures:** [QualityCheck.php](app/Models/QualityCheck.php).
+
+### 7. 🚚 Fleet Logistics & Shipping
+Coordinates the physical movement of assets, drivers, and cargo manifests.
+* **Logistics Dispatch Console:** [dispatch.blade.php](resources/views/livewire/logistics/dispatch.blade.php) - Drag-and-drop shipment assignment panel matching cargo manifests to available fleet assets and drivers.
+* **Asset & Driver Registers:** [vehicles/index.blade.php](resources/views/livewire/logistics/vehicles/index.blade.php) & [drivers/index.blade.php](resources/views/livewire/logistics/drivers/index.blade.php) - Monitors driver licenses, vehicle dimensions, capacities, and fuel consumption logs.
+* **Fulfillment Logistics:** [shipments/index.blade.php](resources/views/livewire/logistics/shipments/index.blade.php) - Tracks shipment statuses (`Processing`, `Shipped`, `In Transit`, `Delivered`). Triggers Cost of Goods Sold (COGS) debit transactions in the financial ledger upon completion.
+* **Underlying Database Structures:** [Shipment.php](app/Models/Shipment.php), [Vehicle.php](app/Models/Vehicle.php), [Driver.php](app/Models/Driver.php), & [FuelAnomaly.php](app/Models/FuelAnomaly.php).
+
+### 8. 💳 Financial Ledgers & General Ledger (GL)
+Double-entry accounting engine compiling compliant operational records.
+* **General Ledger (GL):** [ledger.blade.php](resources/views/livewire/finance/ledger.blade.php) - Logs all debits and credits dynamically compiled from operational triggers (GRN bills, invoices, shipments).
+* **Chart of Accounts:** [accounts.blade.php](resources/views/livewire/finance/accounts.blade.php) - Displays real-time asset, liability, equity, revenue, and expense accounts.
+* **Accounts Receivable (AR) & Accounts Payable (AP):** [receivables.blade.php](resources/views/livewire/finance/receivables.blade.php) & [payables.blade.php](resources/views/livewire/finance/payables.blade.php) - Tracks customer outstanding invoices and supplier bills, supporting split payments and receipts upload.
+* **Interactive Invoice Manager:** [invoices.blade.php](resources/views/livewire/finance/invoices.blade.php) - Integrated CRUD layout to generate invoices, download PDFs, and print corporate receipts.
+* **Underlying Database Structures:** [JournalEntry.php](app/Models/JournalEntry.php), [JournalLine.php](app/Models/JournalLine.php), [Account.php](app/Models/Account.php), [AccountPayable.php](app/Models/AccountPayable.php), [AccountReceivable.php](app/Models/AccountReceivable.php), [Invoice.php](app/Models/Invoice.php), & [PaymentLog.php](app/Models/PaymentLog.php).
+
+### 9. 🤖 Enterprise AI & Demand Forecasting
+Optimizes inventory thresholds using intelligent forecasting tools.
+* **Demand Forecasting Dashboard:** [forecasting.blade.php](resources/views/livewire/intelligence/forecasting.blade.php) - Displays daily usage velocities and plots depletion trends with lightweight SVG sparkline graphs.
+* **Safety Stock Simulator:** Features interactive sliders (from 100% to 200%) to preview projected reorder points, color-coded days-to-stockout warnings (Red/Amber/Green), and a write-back action button.
+* **Bulk Purchase Order Builder:** Scans depleted warehouse stocks, maps items to primary suppliers, and builds draft POs in a single step.
+* **Console Automation:** [CalculateDemandForecasts.php](app/Console/Commands/CalculateDemandForecasts.php) - Computes daily velocities in background schedules.
+
+---
+
+## ⚖️ Stock Adjustments vs. Inventory Ledger (Audit Separation)
 
 In enterprise-level ERP architectures, a strict separation is maintained between operational calculations (physical inventory alterations) and historical reporting (the ledger trace):
 
@@ -279,103 +360,26 @@ In enterprise-level ERP architectures, a strict separation is maintained between
 | **Origin Triggers** | Triggered manually by admins for inventory corrections or stock movement transfers. | Spawned automatically by system triggers (GRNs, Shipments, RMAs, or Manual Adjustments). |
 | **Capabilities** | Supports manual additions, manual removals, and complex **Bin-to-Bin stock transfers**. | Supports advanced filtering, searching, and product SKU tracking. |
 
-### ⇅ The Bin-to-Bin Stock Transfer Engine
-A custom, high-fidelity stock transfer module has been integrated into the **Manual Stock Adjustments** dashboard:
-* **Current Balances Verification:** When an operator transfers stock, the engine validates that the source bin has sufficient physical inventory.
-* **Double-Entry Balance Updates:** In a single, transaction-guaranteed block, the system automatically subtracts the selected quantity from the source bin coordinate and adds it to the target bin coordinate (creating a new stock index if the product was not previously present).
-* **Unified Audit Logging:** Appends a single comprehensive transaction trace to the **Inventory Audit Ledger** detailing both the `from_bin_id` and the `to_bin_id` alongside user timestamps, ensuring absolute transparency.
-
----
-
-## 🤖 Enterprise AI Modules
-
-The SCM ERP incorporates advanced Artificial Intelligence and mathematical forecasting capabilities designed to optimize supply chain operations and minimize human error:
-
-- **AI Demand Forecasting & Interactive Simulation (Active):** Utilizes historical sales velocities and seasonal trend analysis to predict future inventory demand.
-  - **Interactive Safety Stock Simulator**: Administrators can adjust safety stock multiplier sliders (from 100% to 200%) to preview projected reorder level thresholds dynamically.
-  - **Dynamic Reorder Setting Application**: Write simulated limits directly back to the database with a single click.
-  - **Trend Visualizations**: Real-time depletion graphs plotted inside cards using lightweight responsive SVG sparklines.
-  - **Stockout Indicators**: Computes days remaining until stockout (`current stock / velocity`) with color-coded safety tags (Red/Amber/Green).
-  - **Bulk Auto-Generation POs**: Dynamically runs inventory audits, groups low-stock items by supplier, and builds draft POs in a single step.
-- **AI Supply Chain Co-Pilot (Upcoming):** An intelligent conversational assistant capable of answering complex queries about supplier reliability, stockout risks, and operational bottlenecks.
-- **Smart Document Extraction (Upcoming):** AI OCR models intended to automatically parse PDF invoices and supplier quotations to eliminate manual data entry.
-- **Supplier Risk Scoring (Upcoming):** A machine learning model that continuously evaluates supplier trust scores based on delivery delay patterns and defect rates.
-
 ---
 
 ## 📖 User Manuals
 
-To make the system simple and operational for any organization, comprehensive user manuals are compiled in multiple formats and embedded directly inside the software:
+To make the system operational for any organization, comprehensive user manuals are compiled in multiple formats and embedded directly inside the codebase. You can open, view, or download them directly from the repository links below:
 
-* **Interactive Documentation & FAQ**: Accessible directly at `/faq` inside the ERP portal.
-* **[Printable A4 PDF User Manual (PDF)](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/public/user_manual.pdf)**: Located in the public folder (`public/user_manual.pdf`).
-* **[Word Document User Manual (DOCX)](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/public/user_manual.docx)**: Located in the public folder (`public/user_manual.docx`).
-* **Manual Generator Command**: Build both manual formats dynamically from the database using:
-  ```bash
-  php artisan manual:generate
-  ```
+* **[Printable A4 PDF User Manual (PDF)](public/user_manual.pdf)**: Located in the public folder (`public/user_manual.pdf`).
+* **[Word Document User Manual (DOCX)](public/user_manual.docx)**: Located in the public folder (`public/user_manual.docx`).
+* **Interactive Documentation & FAQ**: Accessible directly at `/faq` inside the ERP portal dashboard.
 
----
-
-## 🌟 Key Features Summary
-
-### 🏭 Manufacturing & Bill of Materials (BOM)
-- **BOM Recipe Builder**: Dynamic drawer interface to map finished goods SKU outputs to multiple raw component materials and quantities.
-- **Manufacturing Orders (MO) Tracker**: Interactive pipeline status tracking (`Draft`, `Confirmed`, `In Progress`, `Quality Check`, `Completed`).
-- **Shortage Audits**: Real-time validation checks for component stock before completing production.
-- **Automated Cascade Engine**: Upon order completion, the system automatically decrements components, increments finished stock, logs inventory transactions, raises quality control holds, and posts balanced entries to the General Ledger.
-
-### 🔬 Quality Control (QC)
-- **Automatic Compliance holds**: Incoming GRN shipments and completed MOs are automatically locked under pending inspection.
-- **Inspector Console**: Audits findings, inspects physical items, records details, and logs passed/failed states.
-- **Status Alerts**: Direct feedback loops that release cargo or notify production teams once stock clears inspection.
-
-### 📦 Procurement & Suppliers
-- **Supplier Directory**: Comprehensive management of vendor details, primary contacts, and geographic addresses.
-- **Request for Quotation (RFQ)**: Dispatch items to multiple suppliers and record vendor pricing side-by-side.
-- **Purchase Orders (POs)**: Generate, approve, and track POs.
-- **Goods Receipt Notes (GRN)**: Fully redesigned premium GRN intake cards, featuring progressive reception bars and active manufacturing shortage warning panels.
-
-### 🏭 Inventory & Warehouse Management (WMS)
-- **Multi-Warehouse & Rack Tracking**: Define warehouses, zones, racks, rows, and individual bins.
-- **Stock Tracking**: Real-time inventory logs with `source` and `destination` bin traceability.
-- **Stock Take & Adjustments**: Perform routine inventory audits and manual discrepancy adjustments.
-- **Bin-to-Bin Stock Transfer Engine**: Transaction-guaranteed manual stock transfers with double-entry balance updates and comprehensive audit ledger logs.
-
-### 💼 Sales & CRM
-- **CRM Kanban Board**: Beautiful lead capture columns ("New", "Contacted", "Proposal", "Negotiation", "Won", "Lost") to track opportunities.
-- **CRM Details Overlay**: High-fidelity opportunity detail modal with chronological interaction logs, A4 lead sheet printing, and direct SCM conversions.
-- **Quotation Kanban Board**: Interactive, drag-and-drop quotation pipeline (`Draft`, `Sent`, `Accepted`, `Rejected`) with live deal volume trackers.
-- **CRM Opportunity Converter**: One-click conversion from CRM Lead to draft Quotations with automatic `QuotationItem` line items, stage changes to `proposal` (60% probability), and CRM activity logging.
-- **SCM Cascade Engine**: Automatic conversion of `Accepted` quotes into standard B2B Sales Orders, mapping polymorphic contacts and billing/shipping address IDs, updating linked leads to `won` (100% probability), and initiating stock reservations.
-- **A4 Corporate Letterhead Isolation**: Native print isolator overlays and SHA-256 ERP verification hashes for invoices, quotations, and sales order summaries.
-- **Lead Auto-Conversion**: Instantly convert won leads into Customer Profiles and draft Quotations.
-- **Quotation Engine**: Dynamic tax, discount, and landed cost estimations.
-- **Sales Orders (SOs)**: Pick, pack, and ship items directly from assigned inventory bins.
-- **Returns (RMA)**: Process and log customer returns directly into inventory.
-
-### 🚚 Fleet & Logistics
-- **Driver & Vehicle Management**: Log active vehicles, drivers, and asset schedules.
-- **Shipment Tracking**: Assign drivers to specific fulfillment orders and track delivery statuses.
-
-### 💳 Finance, Accounting & General Ledger (GL)
-- **Double-Entry General Ledger**: Immutable journal logs tracking debits and credits across assets, payables, receivables, and revenue.
-- **Interactive Invoice CRUD**: Full invoice editing, deleting, dynamic detail sheets, and custom PDF generator.
-- **Accounts Payable (AP)**: Track supplier bills, split payments, and upload receipts.
-- **Accounts Receivable (AR)**: Manage customer invoices, split payments, and record transactions.
-- **Bidirectional Payment Sync**: Accounts Receivable dynamically updates linked Invoices upon payment logs. Invoices propagate manual toggles back to receivables, and automatically create a `PaymentLog` entry for any outstanding balance when marked `paid`.
-- **Self-Healing Payment Observers**: Static `PaymentLog` lifecycle hooks automatically recalculate and update parent receivable/payable balances and statuses (`paid`, `partial`, `unpaid`) upon saves or deletions, preventing stale data.
-- **Outstanding Progress Bar**: Dynamic, real-time receivables status meter in the primary SCM dashboard.
-- **Payment Certificate Compiler**: Generates custom-itemized corporate receipts for selected payments in PDF format.
-
-### 🛡️ System Administration & Local Hosting
-- **FixSubfolderIntendedUrl Middleware**: Solves XAMPP session-expiration redirect bypass bug under subdirectory installations (e.g. `/scm-erp/`).
-- **Dynamic Filters**: Real-time timezone middleware integration and dashboard financial reporting interval parameters.
-- **Root Redirection**: Automatic guest fallback from `/` to named route `'login'` with obsolete file clean-ups.
+### Manual Generator Command
+If you update database tables, workflows, or seed data, regenerate both manual documents dynamically using the following artisan command:
+```bash
+php artisan manual:generate
+```
+*Note: This command runs the Python docx builder script (`app/Console/Commands/generate_manual.py`) and compiles the PDF through DomPDF.*
 
 ---
 
-## 🚀 Installation Guide
+## 🚀 Installation & Local Setup
 
 ### Option 1: Docker (Laravel Sail) - *Recommended*
 If you have Docker Desktop installed, you can spin up the entire application without local environment configuration:
@@ -408,60 +412,48 @@ If you have Docker Desktop installed, you can spin up the entire application wit
    ```
    Visit `http://localhost` to log in!
 
-### Option 2: Local Setup (Valet, XAMPP, etc.)
+### Option 2: Local Setup (Valet, XAMPP, php artisan serve)
 1. **Clone the Repository**
    ```bash
    git clone https://github.com/YOUR_USERNAME/scm-erp.git
    cd scm-erp
    ```
-
 2. **Install Dependencies**
    ```bash
    composer install
    npm install && npm run build
    ```
-
 3. **Environment Setup**
    ```bash
    cp .env.example .env
    php artisan key:generate
    ```
    *Update your `.env` file with your local database credentials.*
-
 4. **Database Migration & Seeding**
    ```bash
    php artisan migrate --seed
    ```
-   *This migrates the schema and seeds all admin permissions, module roles, and standard sample datasets.*
-
+   *This migrates the schema and seeds all admin permissions, roles, and standard sample datasets.*
 5. **Start the Application**
    ```bash
    php artisan serve
    ```
    Visit `http://localhost:8000` to log in.
 
----
-
-## 🤝 Contributing
-
-To maintain code integrity, the `main` branch is strictly **protected**. **You cannot push code directly to `main`.**
-
-### Contribution Workflow:
-1. **Fork** the repository.
-2. **Create a branch** for your feature: `git checkout -b feature/my-new-feature`
-3. **Commit** your changes: `git commit -m "Add new feature"`
-4. **Push** to your fork: `git push origin feature/my-new-feature`
-5. **Open a Pull Request (PR)** against the `main` branch.
-
-*All PRs require automated test passes and code review approval before merging.*
-
----
-*Built with ❤️ using Laravel & Livewire.*
+### 🔑 Seeded Login Credentials
+* **Administrative Email:** `admin@example.com`
+* **Administrative Password:** `password`
 
 ---
 
 ## 📄 License & Open Source Agreement
 
-This project is licensed under the **MIT License**. 
+This project is licensed under the terms of the **MIT License**.
 
-By using, distributing, or contributing to this software, you agree to the terms and conditions outlined in the [LICENSE](LICENSE) file. This software is provided "as is", without warranty of any kind, express or implied.
+### ⚖️ Custom Modification Clause & Rights
+
+By downloading, copying, modifying, or distributing this software, you agree to the following terms:
+1. **Rights to Download and Modify:** You are granted the full right to download, fork, install, copy, and modify this software without charge for private, corporate, or commercial purposes.
+2. **Responsibility for Custom Updates:** If you perform any updates, customizations, refactoring, or adjustments to this codebase, **you are solely responsible for your own modifications**. 
+3. **Maintenance and Integrity:** The original authors, maintainers, and contributors are under no obligation to support, fix, debug, or merge custom modifications. Any issues, security vulnerabilities, or operational defects introduced by your changes are your sole responsibility.
+4. **"As Is" Warranty:** This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
