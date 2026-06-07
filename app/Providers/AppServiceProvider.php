@@ -19,6 +19,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Register SalesOrder Observer for automated workflow triggers
+        \App\Models\SalesOrder::observe(\App\Observers\SalesOrderObserver::class);
+
         // Extract subfolder path from APP_URL dynamically (e.g. /scm-erp)
         $appUrl = config('app.url');
         $appPath = rtrim(parse_url($appUrl, PHP_URL_PATH) ?? '', '/');
@@ -39,5 +42,36 @@ class AppServiceProvider extends ServiceProvider
 
         // Make project name fully dynamic globally
         config(['app.name' => setting('website_name', config('app.name', 'SCM ERP'))]);
+
+        // Register Auth Event Listeners for System Logs
+        \Illuminate\Support\Facades\Event::listen(
+            \Illuminate\Auth\Events\Login::class,
+            function (\Illuminate\Auth\Events\Login $event) {
+                \App\Models\SystemLog::create([
+                    'user_id' => $event->user->id,
+                    'action' => 'login',
+                    'module' => 'Auth',
+                    'description' => "User " . $event->user->name . " logged in successfully.",
+                    'ip_address' => request()->ip(),
+                    'user_agent' => request()->userAgent(),
+                ]);
+            }
+        );
+
+        \Illuminate\Support\Facades\Event::listen(
+            \Illuminate\Auth\Events\Logout::class,
+            function (\Illuminate\Auth\Events\Logout $event) {
+                if ($event->user) {
+                    \App\Models\SystemLog::create([
+                        'user_id' => $event->user->id,
+                        'action' => 'logout',
+                        'module' => 'Auth',
+                        'description' => "User " . $event->user->name . " logged out successfully.",
+                        'ip_address' => request()->ip(),
+                        'user_agent' => request()->userAgent(),
+                    ]);
+                }
+            }
+        );
     }
 }

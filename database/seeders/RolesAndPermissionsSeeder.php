@@ -29,6 +29,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view vehicles', 'create vehicles', 'edit vehicles', 'delete vehicles',
             'view drivers', 'create drivers', 'edit drivers', 'delete drivers',
             'view shipments', 'create shipments', 'edit shipments', 'delete shipments',
+            'manage predictive_maintenance', 'manage equipment_billing', 'manage marketplace_transfers', 'manage damage_audits',
             'view grn', 'create grn',
             'view fulfillment', 'create fulfillment',
             'view payables', 'create payables', 'edit payables',
@@ -41,6 +42,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view quotations', 'create quotations', 'edit quotations', 'delete quotations',
             'view rfqs', 'create rfqs', 'edit rfqs', 'delete rfqs',
             'view reports', 'manage reports',
+            'view manufacturing', 'view general_ledger', 'view quality_checks', 'view system_logs', 'manage manufacturing',
         ];
 
         foreach ($permissions as $permission) {

@@ -24,6 +24,13 @@ class PurchaseOrder extends Model
         'shipping_address_id',
         'currency_code',
         'exchange_rate',
+        'approval_status',
+        'approval_notes',
+        'expected_delivery',
+    ];
+
+    protected $casts = [
+        'expected_delivery' => 'datetime',
     ];
 
     public function supplier()
@@ -56,5 +63,10 @@ class PurchaseOrder extends Model
     public function grns()
     {
         return $this->hasMany(GoodsReceiptNote::class);
+    }
+
+    public function logs()
+    {
+        return $this->hasMany(PurchaseOrderLog::class)->latest();
     }
 }

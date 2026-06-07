@@ -22,6 +22,7 @@ state([
     'receive_quantities' => [],
     'showViewModal' => false,
     'viewGrnDetails' => null,
+    'linkedMos' => [],
 ]);
 
 $viewGrn = function ($id) {
@@ -39,7 +40,7 @@ mount(function () {
 $loadData = function () {
     // POs that are approved or partially received
     $this->purchaseOrders = PurchaseOrder::with(['supplier', 'items.product'])
-        ->whereIn('status', ['approved', 'draft', 'partially_received'])
+        ->whereIn('status', ['approved', 'partially_received'])
         ->latest()
         ->get();
         
@@ -63,12 +64,80 @@ $receive = function (PurchaseOrder $po) {
     }
     $this->receive_quantities = $receiveQuantities;
     
+    // Connect with active MOs component shortages check
+    $poProductIds = $po->items->pluck('product_id')->toArray();
+    $activeMos = \App\Models\ManufacturingOrder::whereIn('status', ['draft', 'confirmed', 'in_progress'])
+        ->whereHas('billOfMaterial.items', function ($query) use ($poProductIds) {
+            $query->whereIn('component_product_id', $poProductIds);
+        })
+        ->with(['product', 'billOfMaterial.items.product'])
+        ->get();
+
+    $linked = [];
+    foreach ($activeMos as $mo) {
+        $bom = $mo->billOfMaterial;
+        $moComponents = [];
+        $hasShortage = false;
+        
+        foreach ($bom->items as $bomItem) {
+            if (in_array($bomItem->component_product_id, $poProductIds)) {
+                $qtyRequired = ($bomItem->quantity_required * $mo->quantity_to_produce) / $bom->output_quantity;
+                $currentStock = \App\Models\BinProductStock::where('product_id', $bomItem->component_product_id)->sum('quantity');
+                $shortage = $qtyRequired - $currentStock;
+                
+                if ($shortage > 0) {
+                    $hasShortage = true;
+                    $poItem = $po->items->firstWhere('product_id', $bomItem->component_product_id);
+                    $receivingNow = intval($receiveQuantities[$poItem->id] ?? 0);
+                    
+                    $moComponents[] = [
+                        'product_id' => $bomItem->component_product_id,
+                        'name' => $bomItem->product->name,
+                        'sku' => $bomItem->product->sku,
+                        'required' => $qtyRequired,
+                        'on_hand' => $currentStock,
+                        'shortage' => $shortage,
+                        'will_satisfy' => ($receivingNow >= $shortage),
+                    ];
+                }
+            }
+        }
+        
+        if ($hasShortage && !empty($moComponents)) {
+            $linked[] = [
+                'id' => $mo->id,
+                'mo_number' => $mo->mo_number,
+                'finished_good' => $mo->product->name,
+                'finished_sku' => $mo->product->sku,
+                'status' => $mo->status,
+                'components' => $moComponents,
+            ];
+        }
+    }
+    $this->linkedMos = $linked;
     $this->showModal = true;
+};
+
+$updatedReceiveQuantities = function ($value, $key) {
+    if (!$this->selectedPo) return;
+    
+    $linked = $this->linkedMos;
+    foreach ($linked as &$linkedMo) {
+        foreach ($linkedMo['components'] as &$comp) {
+            $poItem = $this->selectedPo->items->firstWhere('product_id', $comp['product_id']);
+            if ($poItem) {
+                $receivingNow = intval($this->receive_quantities[$poItem->id] ?? 0);
+                $comp['will_satisfy'] = ($receivingNow >= $comp['shortage']);
+            }
+        }
+    }
+    $this->linkedMos = $linked;
 };
 
 $closeModal = function () {
     $this->showModal = false;
     $this->selectedPo = null;
+    $this->linkedMos = [];
     $this->clearValidation();
 };
 
@@ -81,7 +150,9 @@ $confirmReceipt = function () {
         'bin_id.required' => 'You must select a warehouse bin to receive items into.'
     ]);
 
-    DB::transaction(function () {
+    $poProductIds = $this->selectedPo->items->pluck('product_id')->toArray();
+
+    DB::transaction(function () use ($poProductIds) {
         // Filter out items that are not being received
         $itemsToReceive = [];
         $totalAmountReceived = 0;
@@ -140,8 +211,9 @@ $confirmReceipt = function () {
             );
             $binStock->increment('quantity', $qty);
             
-            // Optionally update unit_cost if needed (e.g. moving average), but for now we just log it.
-            
+            // Create pending quality check
+            \App\Helpers\QualityControlHelper::createGrnCheck($grn, $item->product_id);
+
             if ($item->received_quantity < $item->quantity) {
                 $allFullyReceived = false;
             }
@@ -170,166 +242,246 @@ $confirmReceipt = function () {
                 'status' => 'unpaid',
             ]);
         }
+
+        // 5. Connect and Check Manufacturing Orders with resolved shortages
+        $activeMosToCheck = \App\Models\ManufacturingOrder::whereIn('status', ['draft', 'confirmed', 'in_progress'])
+            ->with(['product', 'billOfMaterial.items.product'])
+            ->get();
+            
+        foreach ($activeMosToCheck as $mo) {
+            $bom = $mo->billOfMaterial;
+            $allSufficientNow = true;
+            $usesReceivedItems = false;
+            
+            foreach ($bom->items as $bomItem) {
+                if (in_array($bomItem->component_product_id, $poProductIds)) {
+                    $usesReceivedItems = true;
+                }
+            }
+            
+            if (!$usesReceivedItems) continue;
+            
+            // Check if there was a shortage before receiving this GRN
+            $hadShortageBefore = false;
+            foreach ($bom->items as $bomItem) {
+                $qtyRequired = ($bomItem->quantity_required * $mo->quantity_to_produce) / $bom->output_quantity;
+                $currentStock = \App\Models\BinProductStock::where('product_id', $bomItem->component_product_id)->sum('quantity');
+                
+                $qtyReceivedThisGrn = 0;
+                $poItem = $this->selectedPo->items->firstWhere('product_id', $bomItem->component_product_id);
+                if ($poItem) {
+                    $qtyReceivedThisGrn = intval($this->receive_quantities[$poItem->id] ?? 0);
+                }
+                
+                $stockBefore = $currentStock - $qtyReceivedThisGrn;
+                if ($stockBefore < $qtyRequired) {
+                    $hadShortageBefore = true;
+                }
+                
+                if ($currentStock < $qtyRequired) {
+                    $allSufficientNow = false;
+                }
+            }
+            
+            if ($hadShortageBefore && $allSufficientNow) {
+                session()->push('resolved_mo_messages', "Stock received satisfies all shortages for Manufacturing Order {$mo->mo_number}. This order is now ready for production.");
+            }
+        }
         
         session()->flash('success', 'GRN successfully created for received items.');
     });
 
     $this->showModal = false;
     $this->selectedPo = null;
+    $this->linkedMos = [];
     $this->loadData();
+    
+    // Dispatch resolved MO toasts
+    $messages = session()->pull('resolved_mo_messages', []);
+    foreach ($messages as $msg) {
+        $this->dispatch('toast', type: 'success', message: $msg);
+    }
 };
 
 ?>
 
-<div>
-    <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            {{ __('Goods Receipt Notes (GRN)') }}
-        </h2>
-    </x-slot>
-
-    <div class="py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-8">
-            
-            @if (session()->has('success'))
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">
-                    {{ session('success') }}
-                </div>
-            @endif
-            
-            
-
-            <!-- Pending POs -->
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6 text-gray-900 border-b border-gray-200">
-                    <h3 class="text-lg font-bold mb-4">Pending Purchase Orders</h3>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PO ID</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Amount</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Items Received</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                @forelse ($purchaseOrders as $po)
-                                    <tr>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">PO-#{{ $po->id }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $po->supplier->name }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ setting('currency_symbol', '$') }}{{ number_format($po->total_amount, 2) }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {{ $po->items->sum('received_quantity') }} / {{ $po->items->sum('quantity') }} units
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                            @if($po->status === 'partially_received')
-                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Partially Received</span>
-                                            @else
-                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending</span>
-                                            @endif
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            @if(auth()->user()->can('receive purchase_orders') || auth()->user()->can('create grn'))
-                                            <button wire:click="receive({{ $po->id }})" class="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700">Receive Goods</button>
-                                            @endif
-                                        </td>
-                                    </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">No pending purchase orders to receive.</td>
-                                    </tr>
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+<div class="p-6">
+    <div class="max-w-7xl mx-auto space-y-8">
+        
+        <!-- Premium Header Banner -->
+        <div class="relative rounded-3xl overflow-hidden shadow-xl bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 p-8 border border-indigo-200/10 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="absolute inset-0 bg-radial-gradient from-indigo-500/10 via-transparent to-transparent pointer-events-none"></div>
+            <div class="z-10 text-center md:text-left">
+                <span class="px-3 py-1 text-xs font-semibold bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30 uppercase tracking-widest">Procurement & Sourcing</span>
+                <h1 class="text-4xl font-extrabold text-white mt-3 tracking-tight">Goods Receipt Notes (GRN)</h1>
+                <p class="text-indigo-200/70 text-sm mt-1 max-w-xl">Inspect inbound vendor deliveries, execute physical stock intake into warehouse bins, and reconcile ledger accounts.</p>
             </div>
-
-            <!-- Historical GRNs -->
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6 text-gray-900">
-                    <h3 class="text-lg font-bold mb-4">GRN History</h3>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">GRN ID</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PO Reference</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received By</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                @forelse ($grns as $grn)
-                                    <tr>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">GRN-#{{ $grn->id }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">PO-#{{ $grn->purchase_order_id }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $grn->purchaseOrder->supplier->name ?? 'N/A' }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $grn->user->name ?? 'Unknown' }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $grn->created_at->format(setting('date_format', 'Y-m-d') . ' ' . setting('time_format', 'H:i')) }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <button wire:click="viewGrn({{ $grn->id }})" class="text-indigo-600 hover:text-indigo-900">
-                                                <i class="fas fa-eye"></i> View
-                                            </button>
-                                        </td>
-                                    </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">No goods receipts found.</td>
-                                    </tr>
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
         </div>
+
+        @if (session()->has('success'))
+            <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3.5 rounded-xl shadow-sm font-semibold text-sm flex items-center gap-2">
+                <span class="text-emerald-500">✓</span> {{ session('success') }}
+            </div>
+        @endif
+
+        <!-- Redesigned Pending Purchase Orders Section -->
+        <div class="space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-bold text-slate-800">Pending Purchase Orders</h3>
+                <span class="px-2.5 py-0.5 text-xs font-bold bg-slate-100 text-slate-500 rounded-md">{{ count($purchaseOrders) }} Pending POs</span>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                @forelse ($purchaseOrders as $po)
+                    @php
+                        $receivedUnits = $po->items->sum('received_quantity');
+                        $totalUnits = $po->items->sum('quantity');
+                        $progressPct = $totalUnits > 0 ? min(100, round(($receivedUnits / $totalUnits) * 100)) : 0;
+                    @endphp
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between overflow-hidden">
+                        <!-- Card Header -->
+                        <div class="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-start">
+                            <div>
+                                <span class="text-xs font-bold text-indigo-600 block">PO-#{{ $po->id }}</span>
+                                <span class="text-[10px] text-slate-400 font-mono mt-0.5">{{ $po->created_at->format('M d, Y') }}</span>
+                            </div>
+                            @if($po->status === 'partially_received')
+                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-100">Partially Received</span>
+                            @else
+                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100">Approved</span>
+                            @endif
+                        </div>
+                        
+                        <!-- Card Body -->
+                        <div class="p-5 flex-1 space-y-4">
+                            <div>
+                                <span class="text-[9px] uppercase tracking-wider text-slate-400 block font-bold">Supplier Partner</span>
+                                <span class="text-sm font-semibold text-slate-800">{{ $po->supplier->name }}</span>
+                            </div>
+                            
+                            <!-- Progress Bar -->
+                            <div class="space-y-1.5">
+                                <div class="flex justify-between text-[11px] font-semibold text-slate-500">
+                                    <span>Intake Progress</span>
+                                    <span>{{ $receivedUnits }} / {{ $totalUnits }} units ({{ $progressPct }}%)</span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                    <div class="bg-indigo-600 h-full rounded-full transition-all" style="width: {{ $progressPct }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card Footer -->
+                        <div class="p-5 pt-0 border-t border-slate-50 bg-slate-50/20 flex justify-between items-center gap-3 mt-auto">
+                            <div>
+                                <span class="text-[9px] uppercase tracking-wider text-slate-400 block font-bold">Total Amount</span>
+                                <span class="text-base font-black text-slate-800 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($po->total_amount, 2) }}</span>
+                            </div>
+                            <button wire:click="receive({{ $po->id }})" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-600/10 hover:shadow-emerald-600/25 transition">
+                                Receive Goods
+                            </button>
+                        </div>
+                    </div>
+                @empty
+                    <div class="col-span-full bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400">
+                        <span class="text-3xl block mb-2">🎉</span>
+                        <h4 class="text-sm font-bold text-slate-700">All caught up!</h4>
+                        <p class="text-xs text-slate-400 mt-1">No pending purchase orders waiting for inventory receipt.</p>
+                    </div>
+                @endforelse
+            </div>
+        </div>
+
+        <!-- Redesigned GRN History Section -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden space-y-4 p-6">
+            <h3 class="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3">GRN Receipt Ledger</h3>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-100 text-sm">
+                    <thead class="bg-slate-50">
+                        <tr class="text-slate-500 font-semibold">
+                            <th class="px-6 py-4 text-left">GRN Reference</th>
+                            <th class="px-6 py-4 text-left">PO Reference</th>
+                            <th class="px-6 py-4 text-left">Supplier Partner</th>
+                            <th class="px-6 py-4 text-left">Receiver</th>
+                            <th class="px-6 py-4 text-left">Intake Date</th>
+                            <th class="px-6 py-4 text-right">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                        @forelse ($grns as $grn)
+                            <tr class="hover:bg-slate-50/50 transition">
+                                <td class="px-6 py-4 font-bold text-slate-800">GRN-#{{ str_pad($grn->id, 5, '0', STR_PAD_LEFT) }}</td>
+                                <td class="px-6 py-4 text-slate-650 font-bold">PO-#{{ $grn->purchase_order_id }}</td>
+                                <td class="px-6 py-4 text-slate-600 font-semibold">{{ $grn->purchaseOrder->supplier->name ?? 'N/A' }}</td>
+                                <td class="px-6 py-4 text-slate-500">{{ $grn->user->name ?? 'Unknown' }}</td>
+                                <td class="px-6 py-4 text-slate-400 font-mono">{{ $grn->created_at->format(setting('date_format', 'Y-m-d') . ' ' . setting('time_format', 'H:i')) }}</td>
+                                <td class="px-6 py-4 text-right">
+                                    <button wire:click="viewGrn({{ $grn->id }})" class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold rounded-xl text-xs transition">
+                                        View Details
+                                    </button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="px-6 py-8 text-center text-slate-400 italic">No historical goods receipts logged.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
-    <!-- Receive Modal -->
-    @if($showModal)
+    <!-- Redesigned Receive Modal (with Manufacturing Connections) -->
+    @if($showModal && $selectedPo)
     <div class="fixed inset-0 z-50 overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" wire:click="$set('showModal', false)"></div>
+            <div class="fixed inset-0 transition-opacity bg-slate-900/60 backdrop-blur-sm" wire:click="closeModal"></div>
 
-            <div class="inline-block w-full max-w-3xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg relative z-50">
-                @if($selectedPo)
-                <h3 class="text-lg font-bold leading-6 text-gray-900 mb-4 border-b pb-2">
-                    Receive PO-#{{ $selectedPo->id }} ({{ $selectedPo->supplier->name }})
-                </h3>
+            <div class="inline-block w-full max-w-4xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-2xl rounded-2xl relative z-50">
+                <div class="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900">Execute Inbound Cargo Intake</h3>
+                        <p class="text-xs text-slate-400 mt-0.5">PO-#{{ $selectedPo->id }} &bull; Supplier: {{ $selectedPo->supplier->name }}</p>
+                    </div>
+                    <button wire:click="closeModal" class="text-slate-400 hover:text-slate-500">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
                 
-                <form wire:submit="confirmReceipt">
-                    <div class="mb-4">
-                        <h4 class="font-medium text-sm text-gray-700 mb-2">Items to Receive:</h4>
-                        <div class="overflow-hidden border border-gray-200 rounded-md">
-                            <table class="min-w-full divide-y divide-gray-200 text-sm">
-                                <thead class="bg-gray-50">
-                                    <tr>
-                                        <th class="px-4 py-2 text-left font-medium text-gray-500">Product</th>
-                                        <th class="px-4 py-2 text-left font-medium text-gray-500">Ordered</th>
-                                        <th class="px-4 py-2 text-left font-medium text-gray-500">Already Received</th>
-                                        <th class="px-4 py-2 text-left font-medium text-gray-500">Receive Now</th>
+                <form wire:submit="confirmReceipt" class="space-y-6">
+                    <div>
+                        <h4 class="font-bold text-xs text-slate-500 uppercase tracking-wider mb-2">Quantities Reconciliation</h4>
+                        <div class="overflow-hidden border border-slate-200 rounded-xl">
+                            <table class="min-w-full divide-y divide-slate-100 text-xs text-slate-650">
+                                <thead class="bg-slate-50">
+                                    <tr class="font-bold text-slate-500">
+                                        <th class="px-4 py-2.5 text-left">Product</th>
+                                        <th class="px-4 py-2.5 text-center">Ordered</th>
+                                        <th class="px-4 py-2.5 text-center">Previously Received</th>
+                                        <th class="px-4 py-2.5 text-center">Receive Now</th>
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-gray-200 bg-white">
+                                <tbody class="divide-y divide-slate-100 bg-white">
                                     @foreach($selectedPo->items as $item)
                                         @php
                                             $remaining = $item->quantity - $item->received_quantity;
                                         @endphp
                                         <tr>
-                                            <td class="px-4 py-3">{{ $item->product->name }}</td>
-                                            <td class="px-4 py-3">{{ $item->quantity }}</td>
-                                            <td class="px-4 py-3 text-green-600">{{ $item->received_quantity }}</td>
                                             <td class="px-4 py-3">
+                                                <div class="font-bold text-slate-800">{{ $item->product->name }}</div>
+                                                <div class="text-[10px] text-slate-400 mt-0.5 font-mono">{{ $item->product->sku }}</div>
+                                            </td>
+                                            <td class="px-4 py-3 text-center font-bold font-mono">{{ $item->quantity }}</td>
+                                            <td class="px-4 py-3 text-center font-bold text-emerald-600 font-mono">{{ $item->received_quantity }}</td>
+                                            <td class="px-4 py-3 text-center">
                                                 @if($remaining > 0)
-                                                    <input type="number" min="0" max="{{ $remaining }}" wire:model="receive_quantities.{{ $item->id }}" class="w-24 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                                    <input type="number" min="0" max="{{ $remaining }}" 
+                                                           wire:model.live="receive_quantities.{{ $item->id }}" 
+                                                           class="w-24 text-center rounded-xl border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs font-mono font-bold">
                                                 @else
-                                                    <span class="text-gray-400">Fully Received</span>
+                                                    <span class="text-xs font-bold text-slate-400">Fully Received</span>
                                                 @endif
                                             </td>
                                         </tr>
@@ -339,104 +491,151 @@ $confirmReceipt = function () {
                         </div>
                     </div>
 
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700">Receive into Warehouse Bin (For all items)</label>
-                        <select wire:model="bin_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                            <option value="">Select a bin...</option>
-                            @foreach($bins as $bin)
-                                <option value="{{ $bin->id }}">{{ $bin->warehouse->name }} - {{ $bin->full_label }}</option>
-                            @endforeach
-                        </select>
-                        @error('bin_id') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
+                    <!-- Linked Manufacturing Orders Section -->
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                            <h4 class="font-bold text-xs text-slate-500 uppercase tracking-wider">Linked Manufacturing Orders Waiting For This Stock</h4>
+                            <span class="px-2 py-0.5 text-[9px] font-black uppercase bg-indigo-50 text-indigo-700 rounded-lg">Real-Time Demand Scan</span>
+                        </div>
+                        
+                        @if(!empty($linkedMos))
+                            <div class="space-y-3 max-h-48 overflow-y-auto pr-1">
+                                @foreach($linkedMos as $mo)
+                                    <div class="bg-white border border-slate-250 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
+                                        <div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-bold text-slate-800">{{ $mo['mo_number'] }}</span>
+                                                <span class="px-2 py-0.5 text-[9px] font-bold rounded bg-slate-100 text-slate-500 uppercase">{{ $mo['status'] }}</span>
+                                            </div>
+                                            <div class="text-[10px] text-indigo-600 font-bold mt-1">Finished Good: {{ $mo['finished_good'] }} ({{ $mo['finished_sku'] }})</div>
+                                        </div>
+                                        <div class="space-y-1 text-right">
+                                            @foreach($mo['components'] as $comp)
+                                                <div class="flex items-center gap-2 justify-end text-[11px]">
+                                                    <span class="text-slate-550 font-medium">{{ $comp['name'] }} (Shortage: <b class="text-rose-600 font-bold font-mono">{{ number_format($comp['shortage'], 2) }}</b>)</span>
+                                                    @if($comp['will_satisfy'])
+                                                        <span class="px-2 py-0.5 text-[9px] font-bold rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Will Satisfy Shortage</span>
+                                                    @else
+                                                        <span class="px-2 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200">Partial Intake</span>
+                                                    @endif
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @else
+                            <p class="text-xs text-slate-400 italic">No active Manufacturing Orders are currently waiting for raw materials included in this Purchase Order.</p>
+                        @endif
                     </div>
 
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700">Notes (Optional)</label>
-                        <textarea wire:model="notes" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Any condition notes or discrepancies..."></textarea>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Target Warehouse Bin (Inbound stock injection)</label>
+                            <select wire:model="bin_id" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition cursor-pointer" required>
+                                <option value="">Select a bin...</option>
+                                @foreach($bins as $bin)
+                                    <option value="{{ $bin->id }}">{{ $bin->warehouse->name }} &rarr; {{ $bin->bin_code }} ({{ $bin->zone_code }})</option>
+                                @endforeach
+                            </select>
+                            @error('bin_id') <span class="text-rose-600 text-xs font-bold mt-1 block">{{ $message }}</span> @enderror
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Reconciliation Notes (Optional)</label>
+                            <textarea wire:model="notes" rows="1" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition" placeholder="Log any damage observations or cargo discrepancies..."></textarea>
+                        </div>
                     </div>
 
-                    <div class="mt-5 sm:mt-6 flex justify-end gap-3 border-t pt-4">
-                        <button type="button" wire:click="closeModal" class="inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:text-sm">
+                    <div class="mt-5 sm:mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
+                        <button type="button" wire:click="closeModal" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-xl transition">
                             Cancel
                         </button>
-                        <button type="submit" class="inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:text-sm">
-                            Confirm Receipt & Generate AP
+                        <button type="submit" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-600/10 hover:shadow-emerald-600/25 transition">
+                            Confirm Receipt & Post Accounts Payable
                         </button>
                     </div>
                 </form>
-                @endif
             </div>
         </div>
     </div>
     @endif
 
-    <!-- View GRN Modal -->
-    @if($showViewModal)
+    <!-- Redesigned View GRN Modal -->
+    @if($showViewModal && $viewGrnDetails)
     <div class="fixed inset-0 z-50 overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" wire:click="$set('showViewModal', false)"></div>
-            <div class="inline-block w-full max-w-4xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg relative z-50">
-                @if($viewGrnDetails)
-                <div class="flex justify-between items-center mb-4 border-b pb-3">
-                    <h3 class="text-lg font-bold text-gray-900">GRN Details (GRN-#{{ $viewGrnDetails->id }})</h3>
-                    <button wire:click="$set('showViewModal', false)" class="text-gray-400 hover:text-gray-500">
-                        <i class="fas fa-times"></i>
+            <div class="fixed inset-0 transition-opacity bg-slate-900/60 backdrop-blur-sm" wire:click="$set('showViewModal', false)"></div>
+            
+            <div class="inline-block w-full max-w-4xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-2xl rounded-2xl relative z-50 border border-slate-100">
+                <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900">Goods Receipt Details</h3>
+                        <p class="text-xs text-slate-400 mt-0.5">GRN-#{{ str_pad($viewGrnDetails->id, 5, '0', STR_PAD_LEFT) }}</p>
+                    </div>
+                    <button wire:click="$set('showViewModal', false)" class="text-slate-400 hover:text-slate-550">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
                 
-                <div class="grid grid-cols-2 gap-4 mb-6 text-sm">
+                <div class="grid grid-cols-2 gap-4 mb-6 text-xs text-slate-650 font-semibold bg-slate-50 p-4 rounded-xl border border-slate-200">
                     <div>
-                        <p><span class="font-medium text-gray-500">PO Reference:</span> PO-#{{ $viewGrnDetails->purchase_order_id }}</p>
-                        <p><span class="font-medium text-gray-500">Supplier:</span> {{ $viewGrnDetails->purchaseOrder->supplier->name ?? 'N/A' }}</p>
+                        <p><span class="text-slate-400 font-bold mr-1">PO Reference:</span> PO-#{{ $viewGrnDetails->purchase_order_id }}</p>
+                        <p class="mt-1"><span class="text-slate-400 font-bold mr-1">Supplier Partner:</span> {{ $viewGrnDetails->purchaseOrder->supplier->name ?? 'N/A' }}</p>
                     </div>
                     <div>
-                        <p><span class="font-medium text-gray-500">Received By:</span> {{ $viewGrnDetails->user->name ?? 'Unknown' }}</p>
-                        <p><span class="font-medium text-gray-500">Date:</span> {{ $viewGrnDetails->created_at->format(setting('date_format', 'Y-m-d') . ' ' . setting('time_format', 'H:i')) }}</p>
+                        <p><span class="text-slate-400 font-bold mr-1">Received By:</span> {{ $viewGrnDetails->user->name ?? 'Unknown' }}</p>
+                        <p class="mt-1"><span class="text-slate-400 font-bold mr-1">Receipt Date:</span> {{ $viewGrnDetails->created_at->format(setting('date_format', 'Y-m-d') . ' ' . setting('time_format', 'H:i')) }}</p>
                     </div>
                     @if($viewGrnDetails->notes)
-                    <div class="col-span-2 mt-2">
-                        <p><span class="font-medium text-gray-500">Notes:</span> {{ $viewGrnDetails->notes }}</p>
+                    <div class="col-span-2 mt-2 border-t border-slate-200/60 pt-2 text-slate-500">
+                        <p class="font-normal italic"><span class="font-bold text-slate-400 not-italic mr-1">Inspector Notes:</span> "{{ $viewGrnDetails->notes }}"</p>
                     </div>
                     @endif
                 </div>
 
-                <h4 class="font-semibold text-gray-700 mb-2">Items Received</h4>
-                <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead>
-                            <tr>
-                                <th class="text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                                <th class="text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                                <th class="text-left text-xs font-medium text-gray-500 uppercase">Bin</th>
-                                <th class="text-right text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                <h4 class="font-bold text-xs text-slate-500 uppercase tracking-wider mb-2">Received Cargo Items</h4>
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <table class="min-w-full divide-y divide-slate-100 text-xs text-slate-650">
+                        <thead class="bg-slate-50">
+                            <tr class="font-bold text-slate-500">
+                                <th class="px-4 py-2.5 text-left">Product Item</th>
+                                <th class="px-4 py-2.5 text-left">SKU Code</th>
+                                <th class="px-4 py-2.5 text-left">Warehouse Destination Bin</th>
+                                <th class="px-4 py-2.5 text-right">Qty Received</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-200 bg-white">
+                        <tbody class="divide-y divide-slate-100 bg-white">
                             @forelse(\App\Models\InventoryTransaction::where('reference_type', \App\Models\GoodsReceiptNote::class)->where('reference_id', $viewGrnDetails->id)->with(['product', 'toBin.warehouse'])->get() as $tx)
                                 <tr>
-                                    <td class="py-2 text-sm text-gray-900">{{ $tx->product->name ?? 'Unknown' }}</td>
-                                    <td class="py-2 text-sm text-gray-500">{{ $tx->product->sku ?? 'Unknown' }}</td>
-                                    <td class="py-2 text-sm text-gray-500">
-                                        {{ $tx->toBin->full_label ?? 'N/A' }}
-                                        @if($tx->toBin && $tx->toBin->warehouse)
-                                            <span class="text-xs text-gray-400 block">{{ $tx->toBin->warehouse->name }}</span>
+                                    <td class="px-4 py-3 font-semibold text-slate-800">{{ $tx->product->name ?? 'Unknown' }}</td>
+                                    <td class="px-4 py-3 font-mono text-slate-500">{{ $tx->product->sku ?? 'Unknown' }}</td>
+                                    <td class="px-4 py-3">
+                                        @if($tx->toBin)
+                                            <div class="font-semibold text-slate-700">{{ $tx->toBin->bin_code }} ({{ $tx->toBin->zone_code }})</div>
+                                            @if($tx->toBin->warehouse)
+                                                <div class="text-[10px] text-slate-400 mt-0.5">{{ $tx->toBin->warehouse->name }}</div>
+                                            @endif
+                                        @else
+                                            <span class="text-slate-400">N/A</span>
                                         @endif
                                     </td>
-                                    <td class="py-2 text-sm font-medium text-green-600 text-right">+{{ $tx->quantity }}</td>
+                                    <td class="px-4 py-3 text-right font-black text-emerald-600 font-mono">+{{ $tx->quantity }} units</td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="4" class="py-4 text-center text-sm text-gray-500">No items found.</td>
+                                    <td colspan="4" class="px-4 py-4 text-center text-slate-400">No items found for this record.</td>
                                 </tr>
                             @endforelse
                         </tbody>
                     </table>
                 </div>
                 
-                <div class="mt-6 flex justify-end">
-                    <button wire:click="$set('showViewModal', false)" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300">Close</button>
+                <div class="mt-6 flex justify-end border-t border-slate-100 pt-4">
+                    <button wire:click="$set('showViewModal', false)" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">
+                        Close
+                    </button>
                 </div>
-                @endif
             </div>
         </div>
     </div>

@@ -251,9 +251,9 @@
 
                     <!-- INVENTORY -->
                     @can('view products')
-                    <div x-data="{ open: {{ request()->is('products*') || request()->is('warehouses*') || request()->is('inventory*') ? 'true' : 'false' }} }">
+                    <div x-data="{ open: {{ request()->is('products*') || request()->is('warehouses*') || request()->is('inventory*') || request()->is('quality-checks*') ? 'true' : 'false' }} }">
                         <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
-                                class="nav-item w-full {{ request()->is('products*') || request()->is('warehouses*') || request()->is('inventory*') ? 'active' : '' }}"
+                                class="nav-item w-full {{ request()->is('products*') || request()->is('warehouses*') || request()->is('inventory*') || request()->is('quality-checks*') ? 'active' : '' }}"
                                 title="Inventory">
                             <svg class="nav-icon w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
@@ -269,6 +269,9 @@
                             <a href="{{ url('/warehouses/stock-take') }}" class="sub-nav-item {{ request()->is('warehouses/stock-take*') ? 'active' : '' }}">Stock Take</a>
                             <a href="{{ url('/inventory/log') }}"  class="sub-nav-item {{ request()->is('inventory/log*') ? 'active' : '' }}">Inventory Log</a>
                             <a href="{{ url('/inventory/adjustments') }}" class="sub-nav-item {{ request()->is('inventory/adjustments*') ? 'active' : '' }}">Stock Adjustments</a>
+                            @can('view quality_checks')
+                            <a href="{{ url('/quality-checks') }}" class="sub-nav-item {{ request()->is('quality-checks*') ? 'active' : '' }}">Quality Audits</a>
+                            @endcan
                         </div>
                     </div>
                     @endcan
@@ -324,6 +327,27 @@
                     </div>
                     @endcan
 
+                    <!-- MANUFACTURING -->
+                    @can('view manufacturing')
+                    <div x-data="{ open: {{ request()->is('manufacturing*') ? 'true' : 'false' }} }">
+                        <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
+                                class="nav-item w-full {{ request()->is('manufacturing*') ? 'active' : '' }}"
+                                title="Manufacturing">
+                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+                            </svg>
+                            <span x-show="sidebarOpen" class="whitespace-nowrap flex-1 text-left">Manufacturing</span>
+                            <svg x-show="sidebarOpen" :class="{'rotate-180': open}" class="w-3.5 h-3.5 transition-transform duration-200 nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
+                        </button>
+                        <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
+                            <a href="{{ url('/manufacturing/bom') }}" class="sub-nav-item {{ request()->is('manufacturing/bom*') ? 'active' : '' }}">Bills of Materials</a>
+                            <a href="{{ url('/manufacturing/orders') }}" class="sub-nav-item {{ request()->is('manufacturing/orders*') ? 'active' : '' }}">Manufacturing Orders</a>
+                        </div>
+                    </div>
+                    @endcan
+
                     <!-- FLEET -->
                     @canany(['view vehicles', 'view drivers', 'view shipments'])
                     <div x-data="{ open: {{ request()->is('logistics*') ? 'true' : 'false' }} }">
@@ -341,10 +365,10 @@
                         <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
                             <a href="{{ url('/logistics/dispatch') }}"  class="sub-nav-item {{ request()->is('logistics/dispatch*') ? 'active' : '' }}">Dispatch Board</a>
                             @can('view vehicles')
-                            <a href="{{ url('/logistics/vehicles') }}"  class="sub-nav-item {{ request()->is('logistics/vehicles*') ? 'active' : '' }}">Vehicles</a>
+                            <a href="{{ url('/logistics/vehicles') }}"  class="sub-nav-item {{ request()->is('logistics/vehicles*') ? 'active' : '' }}">Fleet Command</a>
                             @endcan
                             @can('view drivers')
-                            <a href="{{ url('/logistics/drivers') }}"   class="sub-nav-item {{ request()->is('logistics/drivers*') ? 'active' : '' }}">Drivers</a>
+                            <!-- <a href="{{ url('/logistics/drivers') }}"   class="sub-nav-item {{ request()->is('logistics/drivers*') ? 'active' : '' }}">Driver Intelligence</a> -->
                             @endcan
                             @can('view shipments')
                             <a href="{{ url('/logistics/shipments') }}" class="sub-nav-item {{ request()->is('logistics/shipments*') ? 'active' : '' }}">Shipments</a>
@@ -374,6 +398,10 @@
                             <a href="{{ url('/finance/invoices') }}"             class="sub-nav-item {{ request()->is('finance/invoices*') ? 'active' : '' }}">Invoices</a>
                             <a href="{{ url('/finance/payment-certificates') }}" class="sub-nav-item {{ request()->is('finance/payment-certificates*') ? 'active' : '' }}">Payment Certificates</a>
                             <a href="{{ url('/finance/expenses') }}"             class="sub-nav-item {{ request()->is('finance/expenses*') ? 'active' : '' }}">Purchase Expenses</a>
+                            @can('view general_ledger')
+                            <a href="{{ url('/finance/ledger') }}"               class="sub-nav-item {{ request()->is('finance/ledger*') ? 'active' : '' }}">General Ledger</a>
+                            <a href="{{ url('/finance/accounts') }}"             class="sub-nav-item {{ request()->is('finance/accounts*') ? 'active' : '' }}">Chart of Accounts</a>
+                            @endcan
                         </div>
                     </div>
 
@@ -398,7 +426,7 @@
                     </div>
 
                     <!-- ADMIN SECTION -->
-                    @can('manage users')
+                    @canany(['manage users', 'view system_logs'])
                     <div x-show="sidebarOpen" class="nav-section-label mt-2">Administration</div>
                     <div x-data="{ open: {{ request()->is('admin*') ? 'true' : 'false' }} }">
                         <button @click="open = !open; if(!sidebarOpen) { sidebarOpen = true; open = true; }"
@@ -413,29 +441,42 @@
                             </svg>
                         </button>
                         <div x-show="open && sidebarOpen" x-collapse class="pl-8 pr-1 space-y-0.5 pt-0.5">
+                            @can('manage users')
                             <a href="{{ url('/admin/settings') }}" class="sub-nav-item {{ request()->is('admin/settings*') ? 'active' : '' }}">General Settings</a>
                             <a href="{{ url('/admin/constants') }}" class="sub-nav-item {{ request()->is('admin/constants*') ? 'active' : '' }}">System Constants</a>
                             <a href="{{ url('/admin/imports') }}" class="sub-nav-item {{ request()->is('admin/imports*') ? 'active' : '' }}">Bulk Data Imports</a>
                             <a href="{{ url('/admin/users') }}"    class="sub-nav-item {{ request()->is('admin/users*') ? 'active' : '' }}">Users</a>
                             <a href="{{ url('/admin/roles') }}"    class="sub-nav-item {{ request()->is('admin/roles*') ? 'active' : '' }}">Roles & Permissions</a>
+                            @endcan
+                            @can('view system_logs')
+                            <a href="{{ url('/admin/system-logs') }}" class="sub-nav-item {{ request()->is('admin/system-logs*') ? 'active' : '' }}">System Logs</a>
+                            @endcan
                         </div>
                     </div>
-                    @endcan
+                    @endcanany
 
-                    
-                    <div class="pt-4 mt-4 border-t border-gray-800">
-                        <div class="px-4 mb-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Enterprise AI</div>
+                    {{-- ══ ENTERPRISE AI SECTION ══ --}}
+                    <div class="mt-3 pt-3" style="border-top: 1px solid rgba(255,255,255,0.06);">
+                        <div x-show="sidebarOpen" class="nav-section-label">Enterprise AI</div>
 
-                        <a href="{{ route('intelligence.forecasting') }}" class="group flex items-center px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 text-gray-300 hover:bg-gray-800 hover:text-white {{ request()->routeIs('intelligence.forecasting') ? 'bg-indigo-600/10 text-indigo-400 font-bold border border-indigo-500/20 shadow-sm' : '' }}">
-                            <svg class="mr-3 h-5 w-5 flex-shrink-0 transition-colors duration-200 {{ request()->routeIs('intelligence.forecasting') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-gray-300' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                            AI Forecasting
+                        {{-- AI Forecasting --}}
+                        <a href="{{ route('intelligence.forecasting') }}"
+                           title="AI Forecasting"
+                           class="nav-item {{ request()->routeIs('intelligence.forecasting') ? 'active' : '' }}">
+                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                            <span x-show="sidebarOpen" class="whitespace-nowrap">AI Forecasting</span>
                         </a>
-                    </div>
-                    
-                    <div class="pt-4 mt-4 border-t border-gray-800">
-                        <a href="{{ route('faq.index') }}" class="group flex items-center px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 text-gray-300 hover:bg-gray-800 hover:text-white {{ request()->routeIs('faq.index') ? 'bg-indigo-600/10 text-indigo-400 font-bold border border-indigo-500/20 shadow-sm' : '' }}">
-                            <svg class="mr-3 h-5 w-5 flex-shrink-0 transition-colors duration-200 {{ request()->routeIs('faq.index') ? 'text-indigo-400' : 'text-gray-400 group-hover:text-gray-300' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            Documentation & FAQ
+
+                        {{-- Documentation & FAQ --}}
+                        <a href="{{ route('faq.index') }}"
+                           title="Documentation & FAQ"
+                           class="nav-item {{ request()->routeIs('faq.index') ? 'active' : '' }}">
+                            <svg class="nav-icon w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span x-show="sidebarOpen" class="whitespace-nowrap">Docs &amp; FAQ</span>
                         </a>
                     </div>
                 </nav>
@@ -446,46 +487,137 @@
                     <div class="relative">
                         <button @click="showUserMenu = !showUserMenu" @click.outside="showUserMenu = false"
                                 class="flex items-center w-full gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors">
-                            <div class="user-avatar flex-shrink-0">
-                                {{ strtoupper(substr(auth()->user()->name ?? 'U', 0, 1)) }}
+                            {{-- Avatar: show profile photo if set, otherwise initials --}}
+                            @php $authUser = auth()->user(); @endphp
+                            <div class="user-avatar flex-shrink-0 overflow-hidden"
+                                 style="{{ $authUser->profile_photo_path ? 'padding:0;' : '' }}">
+                                @if($authUser->profile_photo_path && file_exists(storage_path('app/public/' . $authUser->profile_photo_path)))
+                                    <img src="{{ asset('storage/' . $authUser->profile_photo_path) }}"
+                                         class="w-full h-full object-cover rounded-full" alt="Photo">
+                                @else
+                                    {{ strtoupper(substr($authUser->name ?? 'U', 0, 1)) }}{{ strtoupper(substr(strstr($authUser->name ?? ' ', ' '), 1, 1)) }}
+                                @endif
                             </div>
                             <div class="flex-1 min-w-0 text-left" x-show="sidebarOpen">
-                                <p class="text-sm font-semibold text-white truncate leading-tight">{{ auth()->user()->name ?? 'Guest' }}</p>
-                                <p class="text-xs truncate mt-0.5" style="color: rgba(255,255,255,0.35);">{{ auth()->user()->email ?? '' }}</p>
+                                <p class="text-sm font-semibold text-white truncate leading-tight">{{ $authUser->name ?? 'Guest' }}</p>
+                                <p class="text-xs truncate mt-0.5" style="color: rgba(255,255,255,0.35);">
+                                    {{ $authUser->getRoleNames()->first() ?? 'User' }}
+                                </p>
                             </div>
-                            <svg x-show="sidebarOpen" class="w-3.5 h-3.5 flex-shrink-0" style="color: rgba(255,255,255,0.3);" fill="currentColor" viewBox="0 0 20 20">
+                            <svg x-show="sidebarOpen"
+                                 :class="{'rotate-180': showUserMenu}"
+                                 class="w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200"
+                                 style="color: rgba(255,255,255,0.3);" fill="currentColor" viewBox="0 0 20 20">
                                 <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
                             </svg>
                         </button>
 
-                        <!-- Dropdown -->
-                        <div x-show="showUserMenu" x-transition
-                             class="absolute bottom-full left-0 w-52 mb-2 rounded-xl shadow-xl py-1 z-50"
+                        <!-- Rich User Dropdown -->
+                        <div x-show="showUserMenu" x-cloak
+                             x-transition:enter="transition ease-out duration-150"
+                             x-transition:enter-start="opacity-0 scale-95 translate-y-1"
+                             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+                             x-transition:leave="transition ease-in duration-100"
+                             x-transition:leave-start="opacity-100 scale-100"
+                             x-transition:leave-end="opacity-0 scale-95"
+                             class="absolute bottom-full left-0 w-64 mb-2 rounded-2xl shadow-2xl z-50 overflow-hidden"
                              style="background: #1a1f35; border: 1px solid rgba(255,255,255,0.1);">
-                            <a href="{{ url('/profile') }}"
-                               class="flex items-center gap-2 px-4 py-2.5 text-sm transition-colors"
-                               style="color: rgba(255,255,255,0.65);"
-                               onmouseover="this.style.background='rgba(255,255,255,0.06)'; this.style.color='#fff'"
-                               onmouseout="this.style.background=''; this.style.color='rgba(255,255,255,0.65)'">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                                </svg>
-                                Profile
-                            </a>
-                            <div style="border-top: 1px solid rgba(255,255,255,0.07); margin: 4px 0;"></div>
-                            <form method="POST" action="{{ url('/logout') }}">
-                                @csrf
-                                <button type="submit"
-                                        class="flex items-center gap-2 w-full text-left px-4 py-2.5 text-sm transition-colors"
-                                        style="color: #f87171;"
-                                        onmouseover="this.style.background='rgba(248,113,113,0.1)'"
-                                        onmouseout="this.style.background=''">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                                    </svg>
-                                    Sign Out
-                                </button>
-                            </form>
+
+                            {{-- Header with avatar --}}
+                            <div class="px-4 py-3" style="background: rgba(99,102,241,0.12); border-bottom: 1px solid rgba(255,255,255,0.07);">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0"
+                                         style="background: linear-gradient(135deg,#6366f1,#8b5cf6);">
+                                        @if($authUser->profile_photo_path && file_exists(storage_path('app/public/' . $authUser->profile_photo_path)))
+                                            <img src="{{ asset('storage/' . $authUser->profile_photo_path) }}" class="w-full h-full object-cover">
+                                        @else
+                                            <div class="w-full h-full flex items-center justify-center text-white text-sm font-bold">
+                                                {{ strtoupper(substr($authUser->name ?? 'U', 0, 1)) }}{{ strtoupper(substr(strstr($authUser->name ?? ' ', ' '), 1, 1)) }}
+                                            </div>
+                                        @endif
+                                    </div>
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-bold text-white truncate">{{ $authUser->name }}</p>
+                                        <p class="text-xs truncate" style="color:rgba(255,255,255,0.45);">{{ $authUser->email }}</p>
+                                        @if($authUser->job_title)
+                                        <p class="text-xs mt-0.5" style="color:rgba(165,180,252,0.8);">{{ $authUser->job_title }}</p>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Menu Items --}}
+                            @php
+                            $menuItems = [
+                                [url('/profile'),           'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',                                                                  'My Profile',           'Overview & profile card',      false],
+                                [url('/profile').'?tab=edit', 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',           'Edit Information',     'Update personal & work details', false],
+                                [url('/profile').'?tab=media','M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z', 'Photo & Signature', 'Upload profile photo & sign', false],
+                                [url('/profile').'?tab=security', 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z',  'Security',             'Password & account security',  false],
+                                [url('/profile').'?tab=activity', 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', 'Activity & Roles',  'Permissions & audit trail',    false],
+                            ];
+                            @endphp
+                            <div class="py-1.5">
+                                @foreach($menuItems as [$href, $path, $title, $subtitle, $danger])
+                                <a href="{{ $href }}"
+                                   class="flex items-center gap-3 px-4 py-2.5 transition-colors group"
+                                   style="color: rgba(255,255,255,0.65);"
+                                   onmouseover="this.style.background='rgba(255,255,255,0.06)'; this.style.color='#fff'"
+                                   onmouseout="this.style.background=''; this.style.color='rgba(255,255,255,0.65)'">
+                                    <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                                         style="background: rgba(99,102,241,0.15);">
+                                        <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ $path }}"/>
+                                        </svg>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <p class="text-xs font-semibold leading-tight">{{ $title }}</p>
+                                        <p class="text-xs leading-tight mt-0.5" style="color:rgba(255,255,255,0.3);">{{ $subtitle }}</p>
+                                    </div>
+                                </a>
+                                @endforeach
+
+                                @can('manage users')
+                                <a href="{{ url('/admin/users') }}"
+                                   class="flex items-center gap-3 px-4 py-2.5 transition-colors"
+                                   style="color: rgba(255,255,255,0.65);"
+                                   onmouseover="this.style.background='rgba(255,255,255,0.06)'; this.style.color='#fff'"
+                                   onmouseout="this.style.background=''; this.style.color='rgba(255,255,255,0.65)'">
+                                    <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                                         style="background: rgba(245,158,11,0.15);">
+                                        <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs font-semibold leading-tight">Manage Users</p>
+                                        <p class="text-xs leading-tight mt-0.5" style="color:rgba(255,255,255,0.3);">Admin user management</p>
+                                    </div>
+                                </a>
+                                @endcan
+                            </div>
+
+                            {{-- Sign Out --}}
+                            <div style="border-top: 1px solid rgba(255,255,255,0.07); padding: 6px 0 4px;">
+                                <form method="POST" action="{{ url('/logout') }}">
+                                    @csrf
+                                    <button type="submit"
+                                            class="flex items-center gap-3 w-full text-left px-4 py-2.5 transition-colors"
+                                            style="color: #f87171;"
+                                            onmouseover="this.style.background='rgba(248,113,113,0.08)'"
+                                            onmouseout="this.style.background=''">
+                                        <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                                             style="background: rgba(248,113,113,0.15);">
+                                            <svg class="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs font-semibold leading-tight">Sign Out</p>
+                                            <p class="text-xs leading-tight mt-0.5" style="color:rgba(248,113,113,0.5);">End your session</p>
+                                        </div>
+                                    </button>
+                                </form>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -523,17 +655,6 @@
                     <div class="flex items-center gap-2">
                         <!-- Live Dynamic Notifications Bell -->
                         <livewire:layout.notifications-bell />
-
-                        <!-- User avatar chip -->
-                        <div class="flex items-center gap-2 pl-2" style="border-left: 1px solid #f1f5f9;">
-                            <div class="user-avatar" style="width:32px; height:32px; font-size:12px;">
-                                {{ strtoupper(substr(auth()->user()->name ?? 'U', 0, 1)) }}
-                            </div>
-                            <div class="hidden sm:block">
-                                <p class="text-sm font-semibold text-gray-800 leading-tight">{{ auth()->user()->name ?? 'Guest' }}</p>
-                                <p class="text-xs text-gray-400">{{ auth()->user()->getRoleNames()->first() ?? 'User' }}</p>
-                            </div>
-                        </div>
                     </div>
                 </header>
 

@@ -16,35 +16,25 @@ new class extends Component {
     public $selectedQuoteId = null;
     public $selectedQuote = null;
     
-    public $showEditModal = false;
-    public $editCustomerId = '';
-    public $editValidUntil = '';
-    public $editTaxAmount = 0.00;
-    public $editShippingAmount = 0.00;
-    public $editNotes = '';
-    public $editItems = [];
+    // Unified Inline Workspace State (like PO/SO)
+    public $isEditing = false;
+    public $editQuoteId = null;
 
-    // Form fields (create)
+    // Unified Form fields
     public $customer_id = '';
     public $crm_lead_id = null;
     public $valid_until = '';
-    public $tax_amount = 0.00;
     public $shipping_amount = 0.00;
     public $notes = '';
-    
     public $apply_gst = false;
     public $gst_type = 'exclusive';
     public $gst_percentage = 0;
-    
-    // Item lines (array of products and details)
     public $items = []; // array of ['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => false]
-    
-    public $showCreateModal = false;
+    public $showForm = false;
     
     public function mount()
     {
         if (!auth()->user()->can('view quotations')) { abort(403); }
-        $this->valid_until = now()->addDays(30)->toDateString();
         $this->gst_percentage = (float)setting('default_gst_percentage', '18');
         $this->gst_type = setting('default_gst_type', 'exclusive');
         $this->resetForm();
@@ -68,15 +58,29 @@ new class extends Component {
     public function resetForm()
     {
         $this->customer_id = '';
+        $this->crm_lead_id = null;
         $this->valid_until = now()->addDays(30)->toDateString();
-        $this->tax_amount = 0.00;
         $this->shipping_amount = 0.00;
         $this->notes = '';
         $this->apply_gst = false;
         $this->gst_type = setting('default_gst_type', 'exclusive');
+        $this->gst_percentage = (float)setting('default_gst_percentage', '18');
         $this->items = [
             ['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => false]
         ];
+        $this->isEditing = false;
+        $this->editQuoteId = null;
+        $this->showForm = false;
+    }
+
+    public function toggleForm()
+    {
+        if ($this->showForm && !$this->isEditing) {
+            $this->showForm = false;
+        } else {
+            $this->resetForm();
+            $this->showForm = true;
+        }
     }
 
     public function addItemLine()
@@ -97,38 +101,18 @@ new class extends Component {
         }
     }
 
-    public function addEditItemLine()
-    {
-        $this->editItems[] = ['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => false];
-    }
-
-    public function addEditBlankLine()
-    {
-        $this->editItems[] = ['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => true];
-    }
-
-    public function removeEditItemLine($index)
-    {
-        if (count($this->editItems) > 1) {
-            unset($this->editItems[$index]);
-            $this->editItems = array_values($this->editItems);
-        }
-    }
-
     public function updated($key, $value)
     {
-        // If product_id in items or editItems changes, automatically pull and populate its base unit price
-        if (str_contains($key, '.product_id')) {
+        if (str_contains($key, 'items.') && str_contains($key, '.product_id')) {
             $parts = explode('.', $key);
-            $arrayName = $parts[0]; // 'items' or 'editItems'
             $index = $parts[1] ?? null;
             
-            if ($index !== null && isset($this->{$arrayName}[$index])) {
+            if ($index !== null && isset($this->items[$index])) {
                 $productId = $value;
                 if ($productId) {
                     $product = Product::find($productId);
                     if ($product) {
-                        $this->{$arrayName}[$index]['unit_price'] = $product->unit_price;
+                        $this->items[$index]['unit_price'] = $product->unit_price;
                     }
                 }
             }
@@ -139,7 +123,7 @@ new class extends Component {
     {
         $sub = 0;
         foreach($this->items as $item) {
-            $sub += ((float)$item['quantity'] * (float)$item['unit_price']);
+            $sub += ((float)($item['quantity'] ?? 0) * (float)($item['unit_price'] ?? 0));
         }
         return $sub;
     }
@@ -163,84 +147,106 @@ new class extends Component {
         return $sub + $this->calculatedTax + (float)$this->shipping_amount;
     }
 
-    public function getEditSubtotalProperty()
-    {
-        $sub = 0;
-        foreach($this->editItems as $item) {
-            $sub += ((float)$item['quantity'] * (float)$item['unit_price']);
-        }
-        return $sub;
-    }
-
-    public $editApplyGst = false;
-    public $editGstType = 'exclusive';
-
-    public function getEditCalculatedTaxProperty()
-    {
-        if (!$this->editApplyGst) return 0;
-        $sub = $this->editSubtotal;
-        if ($this->editGstType === 'inclusive') {
-            return $sub - ($sub / (1 + ($this->gst_percentage / 100)));
-        }
-        return $sub * ($this->gst_percentage / 100);
-    }
-
-    public function getEditTotalProperty()
-    {
-        $sub = $this->editSubtotal;
-        if ($this->editApplyGst && $this->editGstType === 'inclusive') {
-            return $sub + (float)$this->editShippingAmount;
-        }
-        return $sub + $this->editCalculatedTax + (float)$this->editShippingAmount;
-    }
-
     public function saveQuote()
     {
-        if (!auth()->user()->can('create quotations')) { abort(403); }
-        $this->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'valid_until' => 'required|date',
-            'items.*.product_id' => 'required_if:items.*.is_blank,false',
-            'items.*.description' => 'required_if:items.*.is_blank,true',
-            'items.*.quantity' => 'required|numeric|min:0.01',
-            'items.*.unit_price' => 'required|numeric|min:0',
-        ], [
-            'items.*.product_id.required_if' => 'Please select a product for the line.',
-            'items.*.description.required_if' => 'Please provide a description for the blank line.',
-            'items.*.quantity.min' => 'Quantity must be at least 0.01.',
-        ]);
-
-        DB::beginTransaction();
-        try {
-            $quotation = Quotation::create([
-                'reference_no' => 'QTE-' . date('Ymd') . '-' . strtoupper(bin2hex(random_bytes(3))),
-                'customer_id' => $this->customer_id,
-                'status' => 'draft',
-                'valid_until' => $this->valid_until,
-                'total_amount' => $this->total,
-                'tax_amount' => $this->calculatedTax,
-                'shipping_amount' => $this->shipping_amount ?: 0,
-                'notes' => $this->notes,
+        if ($this->isEditing) {
+            if (!auth()->user()->can('edit quotations')) { abort(403); }
+            $this->validate([
+                'customer_id' => 'required|exists:customers,id',
+                'valid_until' => 'required|date',
+                'items' => 'required|array|min:1',
+                'items.*.product_id' => 'required_if:items.*.is_blank,false',
+                'items.*.description' => 'required_if:items.*.is_blank,true',
+                'items.*.quantity' => 'required|numeric|min:0.01',
+                'items.*.unit_price' => 'required|numeric|min:0',
+            ], [
+                'items.*.product_id.required_if' => 'Please select a product for the line.',
+                'items.*.description.required_if' => 'Please provide a description for the blank line.',
+                'items.*.quantity.min' => 'Quantity must be at least 0.01.',
             ]);
 
-            foreach($this->items as $item) {
-                QuotationItem::create([
-                    'quotation_id' => $quotation->id,
-                    'product_id' => $item['is_blank'] ? null : $item['product_id'],
-                    'description' => $item['is_blank'] ? $item['description'] : null,
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'total_price' => (float)$item['quantity'] * (float)$item['unit_price'],
-                ]);
-            }
+            DB::beginTransaction();
+            try {
+                $quote = Quotation::findOrFail($this->editQuoteId);
+                $quote->items()->delete();
 
-            DB::commit();
-            $this->showCreateModal = false;
-            $this->resetForm();
-            $this->dispatch('toast', type: 'success', message:  'Draft Sales Quotation created successfully.');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            $this->dispatch('toast', type: 'error', message:  'Error creating quote: ' . $e->getMessage());
+                $quote->update([
+                    'customer_id' => $this->customer_id,
+                    'valid_until' => $this->valid_until,
+                    'tax_amount' => $this->calculatedTax,
+                    'shipping_amount' => $this->shipping_amount ?: 0,
+                    'total_amount' => $this->total,
+                    'notes' => $this->notes,
+                ]);
+
+                foreach ($this->items as $item) {
+                    QuotationItem::create([
+                        'quotation_id' => $quote->id,
+                        'product_id' => $item['is_blank'] ? null : $item['product_id'],
+                        'description' => $item['is_blank'] ? $item['description'] : null,
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['unit_price'],
+                        'total_price' => (float)$item['quantity'] * (float)$item['unit_price'],
+                    ]);
+                }
+
+                DB::commit();
+                $this->resetForm();
+                if ($this->showDetailsModal && $this->selectedQuoteId === $quote->id) {
+                    $this->viewQuote($quote->id);
+                }
+                $this->dispatch('toast', type: 'success', message: 'Sales Quotation updated successfully.');
+            } catch (\Exception $e) {
+                DB::rollBack();
+                $this->dispatch('toast', type: 'error', message: 'Error updating quotation: ' . $e->getMessage());
+            }
+        } else {
+            if (!auth()->user()->can('create quotations')) { abort(403); }
+            $this->validate([
+                'customer_id' => 'required|exists:customers,id',
+                'valid_until' => 'required|date',
+                'items' => 'required|array|min:1',
+                'items.*.product_id' => 'required_if:items.*.is_blank,false',
+                'items.*.description' => 'required_if:items.*.is_blank,true',
+                'items.*.quantity' => 'required|numeric|min:0.01',
+                'items.*.unit_price' => 'required|numeric|min:0',
+            ], [
+                'items.*.product_id.required_if' => 'Please select a product for the line.',
+                'items.*.description.required_if' => 'Please provide a description for the blank line.',
+                'items.*.quantity.min' => 'Quantity must be at least 0.01.',
+            ]);
+
+            DB::beginTransaction();
+            try {
+                $quotation = Quotation::create([
+                    'reference_no' => 'QTE-' . date('Ymd') . '-' . strtoupper(bin2hex(random_bytes(3))),
+                    'customer_id' => $this->customer_id,
+                    'status' => 'draft',
+                    'valid_until' => $this->valid_until,
+                    'total_amount' => $this->total,
+                    'tax_amount' => $this->calculatedTax,
+                    'shipping_amount' => $this->shipping_amount ?: 0,
+                    'notes' => $this->notes,
+                ]);
+
+                foreach($this->items as $item) {
+                    QuotationItem::create([
+                        'quotation_id' => $quotation->id,
+                        'product_id' => $item['is_blank'] ? null : $item['product_id'],
+                        'description' => $item['is_blank'] ? $item['description'] : null,
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['unit_price'],
+                        'total_price' => (float)$item['quantity'] * (float)$item['unit_price'],
+                    ]);
+                }
+
+                DB::commit();
+                $this->resetForm();
+                $this->dispatch('toast', type: 'success', message: 'Draft Sales Quotation created successfully.');
+            } catch (\Exception $e) {
+                DB::rollBack();
+                $this->dispatch('toast', type: 'error', message: 'Error creating quote: ' . $e->getMessage());
+            }
         }
     }
 
@@ -254,21 +260,19 @@ new class extends Component {
 
     public function editQuote($id)
     {
-        $this->dispatch('toast', type: 'success', message:  'Details loaded successfully.');
         if (!auth()->user()->can('edit quotations')) { abort(403); }
         $quote = Quotation::with('items')->findOrFail($id);
-        $this->selectedQuoteId = $id;
-        $this->editCustomerId = $quote->customer_id;
-        $this->editValidUntil = $quote->valid_until;
-        $this->editTaxAmount = $quote->tax_amount;
-        $this->editShippingAmount = $quote->shipping_amount;
-        $this->editNotes = $quote->notes;
-        $this->editApplyGst = $quote->tax_amount > 0;
-        $this->editGstType = setting('default_gst_type', 'exclusive'); // Just use default or try to reverse calc
-        $this->editItems = [];
+        $this->editQuoteId = $id;
+        $this->customer_id = $quote->customer_id;
+        $this->valid_until = $quote->valid_until;
+        $this->shipping_amount = $quote->shipping_amount;
+        $this->notes = $quote->notes;
+        $this->apply_gst = $quote->tax_amount > 0;
+        $this->gst_type = setting('default_gst_type', 'exclusive');
+        $this->items = [];
         
         foreach ($quote->items as $item) {
-            $this->editItems[] = [
+            $this->items[] = [
                 'product_id' => $item->product_id,
                 'description' => $item->description,
                 'quantity' => $item->quantity,
@@ -277,70 +281,15 @@ new class extends Component {
             ];
         }
         
-        if (empty($this->editItems)) {
-            $this->editItems = [['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => false]];
+        if (empty($this->items)) {
+            $this->items = [['product_id' => '', 'description' => '', 'quantity' => 1, 'unit_price' => 0.00, 'is_blank' => false]];
         }
 
-        $this->showEditModal = true;
-    }
-
-    public function updateQuote()
-    {
-        if (!auth()->user()->can('edit quotations')) { abort(403); }
-        $this->validate([
-            'editCustomerId' => 'required|exists:customers,id',
-            'editValidUntil' => 'required|date',
-            'editItems.*.product_id' => 'required_if:editItems.*.is_blank,false',
-            'editItems.*.description' => 'required_if:editItems.*.is_blank,true',
-            'editItems.*.quantity' => 'required|numeric|min:0.01',
-            'editItems.*.unit_price' => 'required|numeric|min:0',
-        ], [
-            'editItems.*.product_id.required_if' => 'Please select a product for the line.',
-            'editItems.*.description.required_if' => 'Please provide a description for the blank line.',
-            'editItems.*.quantity.min' => 'Quantity must be at least 0.01.',
-        ]);
-
-        DB::beginTransaction();
-        try {
-            $quote = Quotation::findOrFail($this->selectedQuoteId);
-            $quote->items()->delete();
-
-            $subtotal = 0;
-            foreach ($this->editItems as $item) {
-                $subtotal += ((float)$item['quantity'] * (float)$item['unit_price']);
-            }
-            $totalAmount = $this->editTotal;
-
-            $quote->update([
-                'customer_id' => $this->editCustomerId,
-                'valid_until' => $this->editValidUntil,
-                'tax_amount' => $this->editCalculatedTax,
-                'shipping_amount' => $this->editShippingAmount ?: 0,
-                'total_amount' => $totalAmount,
-                'notes' => $this->editNotes,
-            ]);
-
-            foreach ($this->editItems as $item) {
-                QuotationItem::create([
-                    'quotation_id' => $quote->id,
-                    'product_id' => $item['is_blank'] ? null : $item['product_id'],
-                    'description' => $item['is_blank'] ? $item['description'] : null,
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'total_price' => (float)$item['quantity'] * (float)$item['unit_price'],
-                ]);
-            }
-
-            DB::commit();
-            $this->showEditModal = false;
-            if ($this->showDetailsModal && $this->selectedQuoteId === $quote->id) {
-                $this->viewQuote($quote->id);
-            }
-            $this->dispatch('toast', type: 'success', message:  'Sales Quotation updated successfully.');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            $this->dispatch('toast', type: 'error', message:  'Error updating quotation: ' . $e->getMessage());
-        }
+        $this->isEditing = true;
+        $this->viewMode = 'table';
+        $this->showDetailsModal = false; // Hide details modal if open so they can edit inline!
+        $this->showForm = true;
+        $this->dispatch('toast', type: 'success', message: 'Details loaded successfully.');
     }
 
     public function deleteQuote($id)
@@ -354,11 +303,11 @@ new class extends Component {
             DB::commit();
 
             $this->showDetailsModal = false;
-            $this->showEditModal = false;
-            $this->dispatch('toast', type: 'success', message:  'Sales Quotation deleted successfully.');
+            $this->resetForm();
+            $this->dispatch('toast', type: 'success', message: 'Sales Quotation deleted successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
-            $this->dispatch('toast', type: 'error', message:  'Error deleting quotation: ' . $e->getMessage());
+            $this->dispatch('toast', type: 'error', message: 'Error deleting quotation: ' . $e->getMessage());
         }
     }
 
@@ -366,7 +315,7 @@ new class extends Component {
     {
         if (!auth()->user()->can('edit quotations')) { abort(403); }
         Quotation::findOrFail($id)->update(['status' => $status]);
-        $this->dispatch('toast', type: 'success', message:  "Quotation status updated to {$status}.");
+        $this->dispatch('toast', type: 'success', message: "Quotation status updated to {$status}.");
     }
 
     public function moveQuotationStatus($id, $newStatus)
@@ -386,12 +335,10 @@ new class extends Component {
 
         DB::beginTransaction();
         try {
-            // Find primary contact person & billing/shipping addresses
             $contactPerson = $quote->customer ? $quote->customer->contactPersons()->where('is_primary', true)->first() : null;
             $billingAddress = $quote->customer ? $quote->customer->addresses()->where('type', 'billing')->first() : null;
             $shippingAddress = $quote->customer ? $quote->customer->addresses()->where('type', 'shipping')->first() : null;
 
-            // 1. Create SCM Sales Order (Commercial/financial ledger log)
             $salesOrder = SalesOrder::create([
                 'customer_id' => $quote->customer_id,
                 'status' => 'confirmed',
@@ -404,7 +351,6 @@ new class extends Component {
                 'shipping_address_id' => $shippingAddress?->id,
             ]);
 
-            // 2. Create Sales Order items matching quote lines
             foreach($quote->items as $item) {
                 SalesOrderItem::create([
                     'sales_order_id' => $salesOrder->id,
@@ -415,7 +361,6 @@ new class extends Component {
                 ]);
             }
 
-            // 3. Automatically sweep warehouse bins and run physical stock reservations
             foreach($quote->items as $item) {
                 if ($item->product_id) {
                     $binStock = \App\Models\BinProductStock::where('product_id', $item->product_id)
@@ -425,12 +370,9 @@ new class extends Component {
 
                     if ($binStock) {
                         $qtyToReserve = min($item->quantity, $binStock->quantity);
-
-                        // Subtract physically from active bin stock
                         $binStock->quantity -= $qtyToReserve;
                         $binStock->save();
 
-                        // Log stock movement transaction
                         \App\Models\InventoryTransaction::create([
                             'product_id' => $item->product_id,
                             'from_bin_id' => $binStock->warehouse_bin_id,
@@ -446,7 +388,6 @@ new class extends Component {
                 }
             }
 
-            // 4. Transition linked lead to WON stage and log activity
             if ($quote->crm_lead_id) {
                 $lead = \App\Models\CrmLead::find($quote->crm_lead_id);
                 if ($lead) {
@@ -464,17 +405,16 @@ new class extends Component {
                 }
             }
 
-            // 6. Mark Quotation as Accepted
             $quote->update(['status' => 'accepted']);
-
             DB::commit();
+            
             if ($this->showDetailsModal && $this->selectedQuoteId === $quote->id) {
                 $this->viewQuote($quote->id);
             }
-            $this->dispatch('toast', type: 'success', message:  "Quotation approved! Auto-created Sales Order SO-{$salesOrder->id} with inventory stock reservations successfully.");
+            $this->dispatch('toast', type: 'success', message: "Quotation approved! Auto-created Sales Order SO-{$salesOrder->id} successfully.");
         } catch (\Exception $e) {
             DB::rollBack();
-            $this->dispatch('toast', type: 'error', message:  'Error converting quote: ' . $e->getMessage());
+            $this->dispatch('toast', type: 'error', message: 'Error converting quote: ' . $e->getMessage());
         }
     }
 };
@@ -482,9 +422,6 @@ new class extends Component {
 ?>
 
 <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 py-8 space-y-8">
-
-    
-    
 
     <!-- Header Actions & View Mode Toggle -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -509,12 +446,309 @@ new class extends Component {
             </div>
 
             @can('create quotations')
-                <button type="button" wire:click="$toggle('showCreateModal')" class="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-colors">
-                    + New Sales Quote
+                <button type="button" wire:click="toggleForm" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })" class="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-colors shadow-indigo-500/20">
+                    {{ $showForm ? 'Close Form' : '+ New Sales Quote' }}
                 </button>
             @endcan
         </div>
     </div>
+
+    <!-- Financial KPI Summary Cards -->
+    @php
+        $totalQuoteVolume = \App\Models\Quotation::sum('total_amount');
+        $acceptedCount = \App\Models\Quotation::where('status', 'accepted')->count();
+        $totalCount = \App\Models\Quotation::count();
+        $pendingQuotes = \App\Models\Quotation::whereIn('status', ['draft', 'sent'])->count();
+        $winRate = $totalCount > 0 ? ($acceptedCount / $totalCount) * 100 : 0;
+    @endphp
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 animate-fade-in">
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-150 relative overflow-hidden">
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-indigo-500"></div>
+            <span class="text-xs text-gray-400 font-extrabold uppercase">Total Quoted Volume</span>
+            <h3 class="text-2xl font-black text-gray-900 font-mono mt-2">{{ setting('currency_symbol', '$') }}{{ number_format($totalQuoteVolume, 2) }}</h3>
+            <span class="text-[10px] text-gray-400 font-bold block mt-1">Across {{ $totalCount }} pricing estimates</span>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-150 relative overflow-hidden">
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500"></div>
+            <span class="text-xs text-gray-400 font-extrabold uppercase">Converted / Accepted</span>
+            <h3 class="text-2xl font-black text-gray-900 font-mono mt-2">{{ $acceptedCount }}</h3>
+            <span class="text-[10px] text-emerald-600 font-bold block mt-1">Successfully won and converted to SO</span>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-150 relative overflow-hidden">
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-amber-500"></div>
+            <span class="text-xs text-gray-400 font-extrabold uppercase">Pending Estimates</span>
+            <h3 class="text-2xl font-black text-gray-900 font-mono mt-2">{{ $pendingQuotes }}</h3>
+            <span class="text-[10px] text-amber-600 font-bold block mt-1">Estimates in draft or sent state</span>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-150 relative overflow-hidden">
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-violet-500"></div>
+            <span class="text-xs text-gray-400 font-extrabold uppercase">Quotation Win Rate</span>
+            <h3 class="text-2xl font-black text-gray-900 font-mono mt-2">{{ number_format($winRate, 1) }}%</h3>
+            <span class="text-[10px] text-gray-400 font-bold block mt-1">Percentage of quotes accepted</span>
+        </div>
+    </div>
+
+    <!-- Inline Creator and Editor Desk Workspace -->
+    @if($viewMode === 'table' && $showForm)
+    <div class="animate-slide-down">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h3 class="text-lg font-black text-slate-800 tracking-tight">
+                    {{ $isEditing ? 'Edit Commercial Sales Quotation' : 'Create Commercial Sales Quotation' }}
+                </h3>
+                <p class="text-xs text-slate-550">
+                    {{ $isEditing ? 'Edit fields directly inside the corporate quotation document layout below.' : 'Fill in the fields directly on the sales estimate document below.' }}
+                </p>
+            </div>
+            <button type="button" wire:click="resetForm" class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-xl transition-colors" title="Close Form">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        @php
+            $selectedCust = $this->getCustomersList()->firstWhere('id', $customer_id);
+        @endphp
+        <form wire:submit.prevent="saveQuote">
+            <div class="bg-white shadow-2xl border border-slate-200 p-12 relative overflow-hidden text-xs text-slate-755 font-semibold" style="min-height: 1000px; font-family: 'Inter', system-ui, sans-serif;">
+                <!-- Top branding accent border -->
+                <div class="absolute top-0 left-0 right-0 h-2 bg-indigo-600"></div>
+
+                <!-- Document Header -->
+                <div class="flex justify-between items-start border-b-2 border-indigo-600 pb-6 mb-8 mt-2">
+                    <div>
+                        @if(setting('website_logo'))
+                            <img src="{{ setting('website_logo') }}" alt="Logo" class="max-h-12 mb-2 object-contain">
+                        @else
+                            <h1 class="text-xl font-black text-slate-800 tracking-tight">{{ setting('website_name', 'SCM ERP System') }}</h1>
+                        @endif
+                        <div class="text-[10px] text-slate-550 whitespace-pre-line mt-1 font-semibold leading-relaxed">
+                            {!! nl2br(e(setting('company_location', "Corporate Logistics, Warehousing & Supply Chain Operations Hub.\nJebel Ali Free Zone, Dubai, United Arab Emirates"))) !!}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <h2 class="text-3xl font-black text-indigo-600 font-mono uppercase tracking-tight">Quotation</h2>
+                        <div class="text-xs text-slate-500 font-mono font-bold mt-1">
+                            {{ $isEditing ? 'QTE-#' . $editQuoteId : 'QTE-DRAFT' }}
+                        </div>
+                        <div class="text-[10px] text-slate-550 font-mono font-bold mt-2 space-y-1">
+                            <div>
+                                <span class="text-slate-400">Valid Until:</span>
+                                <input type="date" wire:model.live="valid_until" class="border-0 border-b border-dashed border-slate-300 focus:border-indigo-600 focus:ring-0 focus:bg-indigo-50/30 bg-transparent text-[11px] font-bold font-mono p-0.5 w-28 ml-1 rounded" required>
+                                <x-input-error :messages="$errors->get('valid_until')" class="mt-0.5 text-right text-[10px]" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Info Panels -->
+                <div class="grid grid-cols-2 gap-8 mb-8">
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Target Customer Client *</div>
+                        <div class="text-xs text-slate-700 leading-relaxed font-medium">
+                            <select wire:model.live="customer_id" class="w-full border-0 border-b border-dashed border-slate-300 focus:border-indigo-600 focus:ring-0 focus:bg-indigo-50/30 bg-transparent text-xs p-1 text-slate-800 font-bold mb-2 rounded cursor-pointer" required>
+                                <option value="">-- Choose Customer --</option>
+                                @foreach($this->getCustomersList() as $cust)
+                                    <option value="{{ $cust->id }}">{{ $cust->name }}</option>
+                                @endforeach
+                            </select>
+                            <x-input-error :messages="$errors->get('customer_id')" class="mt-1" />
+
+                            @if($selectedCust)
+                                @if($selectedCust->company_name)
+                                    <p class="text-indigo-600 font-bold mb-1">{{ $selectedCust->company_name }}</p>
+                                @endif
+                                <span class="text-slate-500">Email:</span> {{ $selectedCust->email ?? 'N/A' }}<br>
+                                <span class="text-slate-500">Phone:</span> {{ $selectedCust->phone ?? 'N/A' }}
+                            @else
+                                <span class="text-slate-400 italic">Please select a customer to populate recipient details.</span>
+                            @endif
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Shipping Details</div>
+                        <div class="text-xs text-slate-600 leading-relaxed font-medium">
+                            @if($selectedCust && $selectedCust->shipping_address)
+                                <strong>Delivery Address:</strong><br>
+                                <span class="block text-slate-600 mt-1 whitespace-pre-line">{{ $selectedCust->shipping_address }}</span>
+                            @else
+                                <strong>Delivery Address:</strong><br>
+                                As per standard SCM terms.
+                            @endif
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Items Table -->
+                <div class="mb-8">
+                    <table class="w-full border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-700 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                                <th class="p-3 text-left w-12 rounded-l-xl">#</th>
+                                <th class="p-3 text-left">Item Description / Product selection</th>
+                                <th class="p-3 text-center w-20">Quantity</th>
+                                <th class="p-3 text-right w-24">Unit Price</th>
+                                <th class="p-3 text-right w-24">Subtotal</th>
+                                <th class="p-3 text-right w-24">Total</th>
+                                <th class="p-3 text-center w-12 rounded-r-xl"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            @php $lineIndex = 1; @endphp
+                            @foreach($items as $idx => $item)
+                                @php
+                                    $lineSub = (float)($item['quantity'] ?? 0) * (float)($item['unit_price'] ?? 0);
+                                    $totalSub = (float)$this->subtotal;
+                                    $lineTax = $totalSub > 0 ? ($lineSub / $totalSub) * (float)$this->calculatedTax : 0;
+                                    $lineTot = $lineSub + $lineTax;
+                                @endphp
+                                <tr class="font-medium hover:bg-slate-50/30 transition-colors">
+                                    <td class="p-3 text-slate-400">{{ $lineIndex++ }}</td>
+                                    <td class="p-3">
+                                        @if($item['is_blank'])
+                                            <input type="text" wire:model.live="items.{{ $idx }}.description" class="w-full border-0 border-b border-dashed border-slate-200 focus:border-indigo-600 focus:ring-0 focus:bg-indigo-50/30 bg-transparent text-xs font-bold p-1 text-slate-800 rounded" placeholder="Enter custom item or service description..." required>
+                                            <x-input-error :messages="$errors->get('items.'.$idx.'.description')" class="mt-1" />
+                                        @else
+                                            <select wire:model.live="items.{{ $idx }}.product_id" class="w-full border-0 border-b border-dashed border-slate-200 focus:border-indigo-600 focus:ring-0 focus:bg-indigo-50/30 bg-transparent text-xs font-bold p-1 text-slate-855 rounded" required>
+                                                <option value="">-- Choose Product --</option>
+                                                @foreach($this->getProductsList() as $p)
+                                                    <option value="{{ $p->id }}">{{ $p->name }} (SKU: {{ $p->sku }})</option>
+                                                @endforeach
+                                            </select>
+                                            <x-input-error :messages="$errors->get('items.'.$idx.'.product_id')" class="mt-1" />
+                                        @endif
+                                    </td>
+                                    <td class="p-3 text-center">
+                                        <input type="number" step="0.01" wire:model.live="items.{{ $idx }}.quantity" class="w-16 text-center border-0 border-b border-dashed border-slate-200 focus:border-indigo-600 focus:ring-0 focus:bg-indigo-50/30 bg-transparent text-xs font-mono font-bold p-1 text-slate-800 rounded" required>
+                                    </td>
+                                    <td class="p-3 text-right">
+                                        <div class="flex items-center justify-end">
+                                            <span class="text-slate-400 font-mono mr-1">{{ setting('currency_symbol', '$') }}</span>
+                                            <input type="number" step="0.01" wire:model.live="items.{{ $idx }}.unit_price" class="w-20 text-right border-0 border-b border-dashed border-slate-200 focus:border-indigo-600 focus:ring-0 focus:bg-indigo-50/30 bg-transparent text-xs font-mono p-1 text-slate-800 rounded" required>
+                                        </div>
+                                    </td>
+                                    <td class="p-3 text-right text-slate-600 font-mono">
+                                        {{ setting('currency_symbol', '$') }}{{ number_format($lineSub, 2) }}
+                                    </td>
+                                    <td class="p-3 text-right text-slate-800 font-mono font-bold">
+                                        {{ setting('currency_symbol', '$') }}{{ number_format($lineTot, 2) }}
+                                    </td>
+                                    <td class="p-3 text-center">
+                                        @if(count($items) > 1)
+                                            <button type="button" wire:click="removeItemLine({{ $idx }})" class="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded-lg transition-colors">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                            </button>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+
+                    <!-- Add lines controller directly under the table -->
+                    <div class="flex items-center gap-3 mt-4 justify-start">
+                        <button type="button" wire:click="addBlankLine" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-755 text-xs font-bold rounded-xl shadow-sm transition-colors flex items-center gap-1">
+                            + Add Blank Row
+                        </button>
+                        <button type="button" wire:click="addItemLine" class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-100 transition-colors flex items-center gap-1">
+                            + Add Product Line
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Notes & Totals -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-8 items-start border-t border-slate-150 pt-6">
+                    <div class="md:col-span-7 bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+                        <div>
+                            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Remarks / SCM Terms</div>
+                            <textarea wire:model.live.debounce.150ms="notes" rows="3" class="w-full border-0 border-b border-dashed border-slate-300 focus:border-indigo-600 focus:ring-0 focus:bg-indigo-50/30 bg-transparent text-xs font-semibold p-1.5 rounded" placeholder="Optional notes to customer, installation info, deposit terms..."></textarea>
+                        </div>
+                        <div class="border-t border-slate-200 pt-3 flex flex-wrap items-center gap-4">
+                            <label class="inline-flex items-center gap-2 cursor-pointer font-bold">
+                                <input type="checkbox" wire:model.live="apply_gst" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                <span class="text-xs font-bold text-slate-705">Apply GST Tax</span>
+                            </label>
+
+                            @if($apply_gst)
+                                <div class="inline-flex items-center gap-3 p-1.5 bg-white rounded-xl border border-slate-150">
+                                    <div>
+                                        <span class="text-[9px] font-bold text-slate-400 uppercase mr-1">Type:</span>
+                                        <select wire:model.live="gst_type" class="border-0 border-b border-dashed border-slate-300 focus:border-indigo-600 focus:ring-0 focus:bg-indigo-50/30 bg-transparent text-[11px] p-0 font-bold rounded cursor-pointer">
+                                            <option value="exclusive">Exclusive</option>
+                                            <option value="inclusive">Inclusive</option>
+                                        </select>
+                                    </div>
+                                    <div class="border-l border-slate-200 pl-2">
+                                        <span class="text-[9px] font-bold text-slate-400 uppercase mr-1">Rate:</span>
+                                        <input type="number" step="0.01" wire:model.live="gst_percentage" class="w-10 border-0 border-b border-dashed border-slate-300 focus:border-indigo-600 focus:ring-0 focus:bg-indigo-50/30 bg-transparent text-[11px] text-right p-0 font-mono font-bold rounded">%
+                                    </div>
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                    <div class="md:col-span-5">
+                        <table class="w-full text-xs font-semibold text-slate-600">
+                            <tbody class="divide-y divide-slate-100 font-medium">
+                                <tr>
+                                    <td class="py-2.5 text-left text-slate-400">Subtotal:</td>
+                                    <td class="py-2.5 text-right font-mono font-bold text-slate-800">{{ setting('currency_symbol', '$') }}{{ number_format($this->subtotal, 2) }}</td>
+                                </tr>
+                                @if($apply_gst && $this->calculatedTax > 0)
+                                <tr>
+                                    <td class="py-2.5 text-left text-slate-400">GST ({{ $gst_percentage }}% {{ ucfirst($gst_type) }}):</td>
+                                    <td class="py-2.5 text-right font-mono font-bold text-slate-800">{{ setting('currency_symbol', '$') }}{{ number_format($this->calculatedTax, 2) }}</td>
+                                </tr>
+                                @endif
+                                <tr>
+                                    <td class="py-2.5 text-left text-slate-400">Shipping &amp; Handling:</td>
+                                    <td class="py-2.5 text-right">
+                                        <div class="flex items-center justify-end">
+                                            <span class="text-slate-400 font-mono mr-1">{{ setting('currency_symbol', '$') }}</span>
+                                            <input type="number" step="0.01" wire:model.live="shipping_amount" class="w-20 text-right border-0 border-b border-dashed border-slate-300 focus:border-indigo-600 focus:ring-0 focus:bg-indigo-50/30 bg-transparent text-xs font-mono font-bold p-0.5 rounded">
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr class="border-t-2 border-slate-200">
+                                    <td class="py-3 text-left font-black text-slate-900 text-sm">Grand Total:</td>
+                                    <td class="py-3 text-right font-mono font-black text-indigo-600 text-lg">{{ setting('currency_symbol', '$') }}{{ number_format($this->total, 2) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Signatures -->
+                <div class="grid grid-cols-2 gap-8 mt-12 pt-8 border-t border-slate-200">
+                    <div class="text-center">
+                        <div class="h-8 border-b border-slate-300 mx-4 mb-2"></div>
+                        <div class="text-[10px] font-bold text-slate-700 uppercase">Prepared By</div>
+                        <div class="text-[9px] text-slate-400">Representative SCM Sales Team</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="h-8 border-b border-slate-300 mx-4 mb-2"></div>
+                        <div class="text-[10px] font-bold text-slate-700 uppercase">Accepted By Customer Client</div>
+                        <div class="text-[9px] text-slate-400">Authorized Client Signature</div>
+                    </div>
+                </div>
+
+                <!-- Page Footer -->
+                <div class="absolute bottom-6 left-12 right-12 flex justify-between items-center text-[10px] text-slate-400 font-medium">
+                    <span>{{ setting('website_name', 'SCM ERP System') }} &copy; {{ date('Y') }}. All rights reserved.</span>
+                    <span>Page 1 of 1</span>
+                </div>
+            </div>
+
+            <!-- Premium High-Visibility Action Toolbar -->
+            <div class="mt-8 p-4 bg-slate-50/90 backdrop-blur rounded-2xl border border-slate-200/80 shadow-lg flex justify-end gap-3 no-print">
+                <button type="button" wire:click="resetForm" class="px-6 py-3 bg-white hover:bg-slate-50 text-slate-705 text-xs font-black uppercase tracking-wider rounded-xl border border-slate-300 shadow-sm transition-all active:scale-[0.98]">
+                    Cancel &amp; Close
+                </button>
+                <button type="submit" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-md hover:shadow-indigo-500/20 transition-all active:scale-[0.98] cursor-pointer">
+                    {{ $isEditing ? 'Save & Update Quotation' : 'Save & Create Quotation' }}
+                </button>
+            </div>
+        </form>
+    </div>
+    @endif
 
     @if($viewMode === 'table')
         <!-- Quotations Table (List View) -->
@@ -532,7 +766,7 @@ new class extends Component {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 bg-white text-sm">
-                        @forelse($this->getQuotesList() as $q)
+                        @foreach($this->getQuotesList() as $q)
                             <tr class="hover:bg-gray-50/20 transition-colors">
                                 <td class="px-4 py-3.5 whitespace-nowrap">
                                     <div class="font-extrabold text-gray-900">{{ $q->reference_no }}</div>
@@ -562,35 +796,40 @@ new class extends Component {
                                     {{ setting('currency_symbol', '$') }}{{ number_format($q->total_amount, 2) }}
                                 </td>
                                 <td class="px-4 py-3.5 whitespace-nowrap text-right text-xs font-bold space-x-2">
-                                    <button type="button" wire:click="viewQuote({{ $q->id }})" class="text-slate-600 hover:text-slate-900">View</button>
+                                    <a href="{{ route('pdf.quotation', $q->id) }}" target="_blank" class="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors inline-flex items-center" title="PDF Preview & Download">
+                                        <!-- PDF/File Icon -->
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                        </svg>
+                                    </a>
                                     
                                     @can('edit quotations')
                                         @if($q->status !== 'accepted')
-                                            <button type="button" wire:click="editQuote({{ $q->id }})" class="text-indigo-600 hover:text-indigo-800">Edit</button>
+                                            <button type="button" wire:click="editQuote({{ $q->id }})" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })" class="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-colors inline-flex items-center" title="Edit Quotation">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                            </button>
                                         @endif
                                     @endcan
                                     
                                     @if($q->status === 'draft')
-                                        <button type="button" wire:click="updateStatus({{ $q->id }}, 'sent')" class="text-indigo-600 hover:text-indigo-800">Mark Sent</button>
+                                        <button type="button" wire:click="updateStatus({{ $q->id }}, 'sent')" class="px-2 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded transition-colors shadow-sm inline-block align-middle">Mark Sent</button>
                                     @endif
                                     @if($q->status === 'sent')
-                                        <button type="button" wire:click="convertToSalesOrder({{ $q->id }})" class="text-emerald-600 hover:text-emerald-800">Accept & Convert</button>
-                                        <button type="button" wire:click="updateStatus({{ $q->id }}, 'rejected')" class="text-rose-600 hover:text-rose-800">Reject</button>
+                                        <button type="button" wire:click="convertToSalesOrder({{ $q->id }})" class="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded transition-colors shadow-sm inline-block align-middle">Accept & Convert</button>
+                                        <button type="button" wire:click="updateStatus({{ $q->id }}, 'rejected')" class="px-2 py-0.5 text-[10px] font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 rounded transition-colors shadow-sm inline-block align-middle">Reject</button>
                                     @endif
                                     @if($q->status === 'accepted')
-                                        <span class="text-gray-400 italic">Converted to SO</span>
+                                        <span class="text-gray-400 italic text-[11px] inline-block align-middle">Converted to SO</span>
                                     @endif
 
                                     @can('delete quotations')
-                                        <button type="button" onclick="confirm('Are you sure you want to permanently delete this quotation estimate?') && @this.deleteQuote({{ $q->id }})" class="text-rose-600 hover:text-rose-800">Delete</button>
+                                        <button type="button" onclick="confirm('Are you sure you want to permanently delete this quotation estimate?') && @this.deleteQuote({{ $q->id }})" class="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors inline-flex items-center" title="Delete Quotation">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                        </button>
                                     @endcan
                                 </td>
                             </tr>
-                        @empty
-                            <tr>
-                                <td colspan="6" class="px-4 py-8 text-center text-gray-400">No active customer quotations logged.</td>
-                            </tr>
-                        @endforelse
+                        @endforeach
                     </tbody>
                 </table>
             </div>
@@ -617,7 +856,7 @@ new class extends Component {
                      x-on:dragover.prevent=""
                      x-on:drop="draggingOver = false; const quoteId = event.dataTransfer.getData('text/plain'); $wire.moveQuotationStatus(quoteId, '{{ $statusKey }}')"
                      class="flex-shrink-0 w-[290px] lg:w-[310px] rounded-3xl p-4 transition-all duration-200 border space-y-4 {{ $statusVal['bg'] }} {{ $statusVal['border'] }}"
-                     :class="{ 'ring-2 ring-indigo-500 bg-indigo-50/15 border-indigo-200 shadow-md scale-[1.01]': draggingOver }"
+                     :class="{ 'ring-2 ring-indigo-600 bg-indigo-50/15 border-indigo-200 shadow-md scale-[1.01]': draggingOver }"
                 >
                     <!-- Column Header -->
                     <div class="flex items-center justify-between border-b border-gray-100 pb-2">
@@ -633,10 +872,15 @@ new class extends Component {
                         @forelse($statusQuotes as $quote)
                             <div draggable="true"
                                  x-on:dragstart="event.dataTransfer.setData('text/plain', {{ $quote->id }})"
-                                 wire:click="viewQuote({{ $quote->id }})"
-                                 class="bg-white p-4 rounded-2xl border border-gray-150 shadow-sm relative group hover:shadow-md hover:border-indigo-400 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+                                 wire:click="editQuote({{ $quote->id }})"
+                                 class="bg-white p-4 rounded-2xl border border-gray-150 shadow-sm relative group hover:shadow-md hover:border-indigo-600 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
                             >
-                                <div class="text-xs font-extrabold text-gray-900 leading-snug pr-4">{{ $quote->reference_no }}</div>
+                                <div class="flex justify-between items-start gap-1">
+                                    <div class="text-xs font-extrabold text-gray-900 leading-snug pr-4">{{ $quote->reference_no }}</div>
+                                    <a href="{{ route('pdf.quotation', $quote->id) }}" target="_blank" onclick="event.stopPropagation()" class="p-1 text-indigo-600 hover:bg-indigo-50 rounded" title="PDF Preview">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                    </a>
+                                </div>
                                 <div class="text-[10px] font-bold text-indigo-600 mt-0.5 truncate">{{ $quote->customer->name ?? 'N/A' }}</div>
                                 @if($quote->customer && $quote->customer->company_name)
                                     <div class="text-[9px] text-gray-400 mt-0.5 truncate">{{ $quote->customer->company_name }}</div>
@@ -644,7 +888,7 @@ new class extends Component {
                                 <div class="text-[9px] text-gray-400 mt-1 font-semibold">Valid until: {{ date('M d, Y', strtotime($quote->valid_until)) }}</div>
 
                                 <!-- Items preview -->
-                                <div class="mt-2 text-[9px] text-gray-455 border-t border-slate-100 pt-2 space-y-0.5 max-h-[60px] overflow-hidden font-medium">
+                                <div class="mt-2 text-[9px] text-gray-400 border-t border-slate-100 pt-2 space-y-0.5 max-h-[60px] overflow-hidden font-medium">
                                     @foreach($quote->items as $itm)
                                         <div class="truncate">{{ $itm->quantity }}x {{ $itm->product_id ? ($itm->product->name ?? 'Unknown') : ($itm->description ?? 'Custom Line') }}</div>
                                     @endforeach
@@ -674,7 +918,7 @@ new class extends Component {
                                         <select 
                                             onchange="event.stopPropagation(); @this.moveQuotationStatus({{ $quote->id }}, this.value)"
                                             onclick="event.stopPropagation()"
-                                            class="p-0.5 text-[8px] bg-slate-50 border-gray-200 text-gray-600 rounded focus:ring-0 focus:border-indigo-400"
+                                            class="p-0.5 text-[8px] bg-slate-50 border-gray-200 text-gray-600 rounded focus:ring-0 focus:border-indigo-600"
                                         >
                                             <option value="">Move...</option>
                                             @foreach(['draft' => 'Draft', 'sent' => 'Sent', 'accepted' => 'Accepted', 'rejected' => 'Rejected'] as $k => $v)
@@ -695,131 +939,6 @@ new class extends Component {
         </div>
     @endif
 
-    <!-- Create Quotation Modal -->
-    @if($showCreateModal)
-        <div class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" wire:click="$set('showCreateModal', false)"></div>
-                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-                
-                <div class="inline-block align-bottom bg-white rounded-3xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full p-6 border border-gray-200">
-                    <h3 class="text-lg font-black text-gray-900 mb-4">Create Commercial Sales Quotation</h3>
-
-                    <form wire:submit.prevent="saveQuote" class="space-y-6 text-xs font-semibold text-gray-700">
-                        
-                        <!-- Top Metadata -->
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <x-input-label value="Target Customer Client *" />
-                                <select wire:model="customer_id" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700" required>
-                                    <option value="">-- Choose Customer --</option>
-                                    @foreach($this->getCustomersList() as $cust)
-                                        <option value="{{ $cust->id }}">{{ $cust->name }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div>
-                                <x-input-label value="Validity Until *" />
-                                <input type="date" wire:model="valid_until" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700 font-semibold" required>
-                            </div>
-                            <div class="space-y-2">
-                                <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer pt-6">
-                                    <input type="checkbox" wire:model.live="apply_gst" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
-                                    <span>Apply GST ({{ $gst_percentage }}%)</span>
-                                </label>
-                                @if($apply_gst)
-                                    <select wire:model.live="gst_type" class="block w-full rounded-xl border-gray-300 text-xs text-gray-700 mt-2">
-                                        <option value="exclusive">Exclusive (+ to Subtotal)</option>
-                                        <option value="inclusive">Inclusive (in Price)</option>
-                                    </select>
-                                @endif
-                            </div>
-                            <div>
-                                <x-input-label value="Est. Shipping / Freight Cost ($)" />
-                                <input type="number" step="0.01" wire:model.live="shipping_amount" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700">
-                            </div>
-                            <div class="md:col-span-2">
-                                <x-input-label value="Memo Notes to Customer" />
-                                <x-text-input type="text" wire:model="notes" class="mt-1 block w-full text-xs" placeholder="e.g. Terms include 50% deposit..." />
-                            </div>
-                        </div>
-
-                        <!-- Item lines -->
-                        <div class="border-t border-gray-150 pt-4 space-y-3">
-                            <div class="flex items-center justify-between">
-                                <h4 class="text-sm font-bold text-gray-900">Line Items & Dynamic Quantities</h4>
-                                <div class="flex gap-2">
-                                    <button type="button" wire:click="addBlankLine" class="px-2.5 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-[10px] font-bold">+ Blank Custom Line</button>
-                                    <button type="button" wire:click="addItemLine" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-[10px] font-bold">+ Add Product Line</button>
-                                </div>
-                            </div>
-
-                            <div class="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-                                @foreach($items as $idx => $item)
-                                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end bg-slate-50/50 p-2.5 rounded-2xl border border-slate-100">
-                                        <div class="col-span-2">
-                                            @if($item['is_blank'])
-                                                <label class="block text-[10px] text-gray-400 font-bold uppercase text-amber-600">Custom Item / Service</label>
-                                                <input type="text" wire:model.live="items.{{ $idx }}.description" class="mt-1 block w-full rounded-xl border-amber-300 bg-amber-50/30 text-xs text-gray-700 focus:border-amber-500 focus:ring-amber-500" placeholder="e.g. Labor Fees, Installation...">
-                                            @else
-                                                <label class="block text-[10px] text-gray-400 font-bold uppercase">Product Item</label>
-                                                <select wire:model.live="items.{{ $idx }}.product_id" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700">
-                                                    <option value="">-- Choose Product --</option>
-                                                    @foreach($this->getProductsList() as $p)
-                                                        <option value="{{ $p->id }}">{{ $p->name }} (SKU: {{ $p->sku }})</option>
-                                                    @endforeach
-                                                </select>
-                                            @endif
-                                        </div>
-                                        <div>
-                                            <label class="block text-[10px] text-gray-400 font-bold uppercase">Quantity</label>
-                                            <input type="number" step="0.01" wire:model.live="items.{{ $idx }}.quantity" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700" required>
-                                        </div>
-                                        <div class="flex gap-2 items-center">
-                                            <div class="flex-1">
-                                                <label class="block text-[10px] text-gray-400 font-bold uppercase">Price per unit ($)</label>
-                                                <input type="number" step="0.01" wire:model.live="items.{{ $idx }}.unit_price" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700" required>
-                                            </div>
-                                            @if(count($items) > 1)
-                                                <button type="button" wire:click="removeItemLine({{ $idx }})" class="text-rose-500 hover:text-rose-700 font-bold text-base mt-4">&times;</button>
-                                            @endif
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                        </div>
-
-                        <!-- Calculations and Totals -->
-                        <div class="border-t border-gray-150 pt-4 flex flex-col items-end gap-2 text-sm">
-                            <div class="flex gap-8">
-                                <span class="text-gray-400 font-bold uppercase">Subtotal:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->subtotal, 2) }}</span>
-                            </div>
-                            <div class="flex gap-8">
-                                <span class="text-gray-400 font-bold uppercase">Tax:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->calculatedTax, 2) }}</span>
-                            </div>
-                            <div class="flex gap-8">
-                                <span class="text-gray-400 font-bold uppercase">Shipping:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($shipping_amount ?: 0, 2) }}</span>
-                            </div>
-                            <div class="flex gap-8 border-t border-gray-200 pt-2 text-base">
-                                <span class="text-gray-500 font-black uppercase">Final Total:</span>
-                                <span class="font-black text-indigo-600 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->total, 2) }}</span>
-                            </div>
-                        </div>
-
-                        <!-- Submit actions -->
-                        <div class="mt-6 flex justify-end gap-3 pt-4 border-t border-gray-150">
-                            <button type="button" wire:click="$set('showCreateModal', false)" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition-colors">Cancel</button>
-                            <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow">Save Quote</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    @endif
-
     <!-- Quotation Details Modal (Corporate Letterhead Document) -->
     @if($showDetailsModal && $selectedQuote)
         <div class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -835,7 +954,7 @@ new class extends Component {
                         <div class="flex items-center gap-2">
                             @can('edit quotations')
                                 @if($selectedQuote->status !== 'accepted')
-                                    <button type="button" wire:click="editQuote({{ $selectedQuote->id }})" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors">
+                                    <button type="button" wire:click="editQuote({{ $selectedQuote->id }})" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors">
                                         Edit Estimate
                                     </button>
                                 @endif
@@ -907,7 +1026,7 @@ new class extends Component {
                             <div class="text-right">
                                 <h2 class="text-xl font-black text-slate-900 tracking-tight">COMMERCIAL ESTIMATE</h2>
                                 <p class="text-[10px] font-bold text-slate-600 mt-1 font-mono">REF: {{ $selectedQuote->reference_no }}</p>
-                                <p class="text-[9px] text-slate-450 mt-0.5">Valid Until: {{ date('M d, Y', strtotime($selectedQuote->valid_until)) }}</p>
+                                <p class="text-[9px] text-slate-400 mt-0.5">Valid Until: {{ date('M d, Y', strtotime($selectedQuote->valid_until)) }}</p>
                                 
                                 @php
                                     $quoteClrs = [
@@ -953,7 +1072,7 @@ new class extends Component {
                             <span class="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block mb-3">PRODUCT QUANTITIES & PRICING SPECIFICATIONS</span>
                             <table class="min-w-full divide-y divide-slate-200 text-left">
                                 <thead>
-                                    <tr class="text-[9px] text-slate-450 uppercase font-black tracking-wider bg-slate-50">
+                                    <tr class="text-[9px] text-slate-400 uppercase font-black tracking-wider bg-slate-50">
                                         <th class="px-3 py-2 font-black">#</th>
                                         <th class="px-3 py-2 font-black">Product Details</th>
                                         <th class="px-3 py-2 font-black">SKU</th>
@@ -967,7 +1086,7 @@ new class extends Component {
                                         <tr class="font-medium text-slate-700">
                                             <td class="px-3 py-2.5 font-bold font-mono">{{ $idx + 1 }}</td>
                                             <td class="px-3 py-2.5">
-                                                <div class="font-extrabold text-slate-900">{{ $itm->product->name ?? 'Unknown' }}</div>
+                                                <div class="font-extrabold text-slate-900">{{ $itm->product_id ? ($itm->product->name ?? 'Unknown') : ($itm->description ?? 'Custom Line') }}</div>
                                             </td>
                                             <td class="px-3 py-2.5 font-mono text-[10px] text-slate-500">{{ $itm->product->sku ?? '--' }}</td>
                                             <td class="px-3 py-2.5 text-right font-mono font-bold">{{ number_format($itm->quantity, 2) }}</td>
@@ -996,7 +1115,7 @@ new class extends Component {
                                 </div>
                                 <div class="flex justify-between border-t border-slate-200 pt-2 text-xs font-black">
                                     <span class="text-slate-800">GRAND TOTAL:</span>
-                                    <span class="font-mono text-indigo-700">{{ setting('currency_symbol', '$') }}{{ number_format($selectedQuote->total_amount, 2) }}</span>
+                                    <span class="font-mono text-indigo-600">{{ setting('currency_symbol', '$') }}{{ number_format($selectedQuote->total_amount, 2) }}</span>
                                 </div>
                             </div>
                         </div>
@@ -1013,14 +1132,14 @@ new class extends Component {
                         <div class="pt-8 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-8 items-end">
                             <div>
                                 <span class="text-[8px] font-black text-slate-400 uppercase tracking-widest block font-mono">ERP SECURE VALIDATION TOKEN</span>
-                                <span class="text-[9px] font-mono text-slate-500 block truncate mt-1 bg-slate-50 p-1.5 rounded border border-slate-100" title="Secure SHA-256 ERP Verification Hash">
+                                <span class="text-[9px] font-mono text-slate-550 block truncate mt-1 bg-slate-50 p-1.5 rounded border border-slate-100" title="Secure SHA-256 ERP Verification Hash">
                                     {{ hash('sha256', $selectedQuote->reference_no . '|' . $selectedQuote->total_amount . '|' . $selectedQuote->valid_until) }}
                                 </span>
                             </div>
                             
                             <div class="space-y-6">
                                 <div class="border-b border-slate-400 h-8"></div>
-                                <div class="flex justify-between text-[9px] text-slate-450 font-bold uppercase tracking-wider">
+                                <div class="flex justify-between text-[9px] text-slate-455 font-bold uppercase tracking-wider">
                                     <span>Authorized Client Signature</span>
                                     <span>Date Signed</span>
                                 </div>
@@ -1032,12 +1151,12 @@ new class extends Component {
                     <div class="flex justify-between items-center border-t border-slate-100 pt-6 mt-6 no-print">
                         <div class="flex items-center gap-2">
                             @if($selectedQuote->status === 'draft')
-                                <button type="button" wire:click="updateStatus({{ $selectedQuote->id }}, 'sent')" class="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition-colors">
+                                <button type="button" wire:click="updateStatus({{ $selectedQuote->id }}, 'sent')" class="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-755 text-xs font-bold rounded-xl transition-colors">
                                     Mark Sent &amp; Dispatch Estimate
                                 </button>
                             @endif
                             @if($selectedQuote->status === 'sent')
-                                <button type="button" wire:click="convertToSalesOrder({{ $selectedQuote->id }})" class="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl transition-colors">
+                                <button type="button" wire:click="convertToSalesOrder({{ $selectedQuote->id }})" class="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-750 text-xs font-bold rounded-xl transition-colors">
                                     Accept Quote &amp; Auto-Launch Sales Order
                                 </button>
                                 <button type="button" wire:click="updateStatus({{ $selectedQuote->id }}, 'rejected')" class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl transition-colors">
@@ -1049,7 +1168,7 @@ new class extends Component {
                         @can('delete quotations')
                             <button type="button" 
                                     onclick="confirm('Are you sure you want to permanently delete this quotation estimate?') && @this.deleteQuote({{ $selectedQuote->id }})" 
-                                    class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl transition-colors"
+                                    class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-755 text-xs font-bold rounded-xl transition-colors"
                             >
                                 Delete Quotation
                             </button>
@@ -1059,131 +1178,4 @@ new class extends Component {
             </div>
         </div>
     @endif
-
-    <!-- Quotation Edit Modal -->
-    @if($showEditModal)
-        <div class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" wire:click="$set('showEditModal', false)"></div>
-                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-                
-                <div class="inline-block align-bottom bg-white rounded-3xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full p-6 border border-gray-200">
-                    <h3 class="text-lg font-black text-gray-900 mb-4">Edit Commercial Sales Quotation</h3>
-
-                    <form wire:submit.prevent="updateQuote" class="space-y-6 text-xs font-semibold text-gray-700">
-                        
-                        <!-- Top Metadata -->
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <x-input-label value="Target Customer Client *" />
-                                <select wire:model="editCustomerId" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700" required>
-                                    <option value="">-- Choose Customer --</option>
-                                    @foreach($this->getCustomersList() as $cust)
-                                        <option value="{{ $cust->id }}">{{ $cust->name }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div>
-                                <x-input-label value="Validity Until *" />
-                                <input type="date" wire:model="editValidUntil" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700 font-semibold" required>
-                            </div>
-                            <div class="space-y-2">
-                                <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer pt-6">
-                                    <input type="checkbox" wire:model.live="editApplyGst" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
-                                    <span>Apply GST ({{ $gst_percentage }}%)</span>
-                                </label>
-                                @if($editApplyGst)
-                                    <select wire:model.live="editGstType" class="block w-full rounded-xl border-gray-300 text-xs text-gray-700 mt-2">
-                                        <option value="exclusive">Exclusive (+ to Subtotal)</option>
-                                        <option value="inclusive">Inclusive (in Price)</option>
-                                    </select>
-                                @endif
-                            </div>
-                            <div>
-                                <x-input-label value="Est. Shipping / Freight Cost ($)" />
-                                <input type="number" step="0.01" wire:model.live="editShippingAmount" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700">
-                            </div>
-                            <div class="md:col-span-2">
-                                <x-input-label value="Memo Notes to Customer" />
-                                <x-text-input type="text" wire:model="editNotes" class="mt-1 block w-full text-xs" placeholder="e.g. Terms include 50% deposit..." />
-                            </div>
-                        </div>
-
-                        <!-- Item lines -->
-                        <div class="border-t border-gray-150 pt-4 space-y-3">
-                            <div class="flex items-center justify-between">
-                                <h4 class="text-sm font-bold text-gray-900">Line Items & Dynamic Quantities</h4>
-                                <div class="flex gap-2">
-                                    <button type="button" wire:click="addEditBlankLine" class="px-2.5 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-[10px] font-bold">+ Blank Custom Line</button>
-                                    <button type="button" wire:click="addEditItemLine" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-[10px] font-bold">+ Add Product Line</button>
-                                </div>
-                            </div>
-
-                            <div class="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-                                @foreach($editItems as $idx => $item)
-                                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end bg-slate-50/50 p-2.5 rounded-2xl border border-slate-100">
-                                        <div class="col-span-2">
-                                            @if($item['is_blank'])
-                                                <label class="block text-[10px] text-gray-400 font-bold uppercase text-amber-600">Custom Item / Service</label>
-                                                <input type="text" wire:model.live="editItems.{{ $idx }}.description" class="mt-1 block w-full rounded-xl border-amber-300 bg-amber-50/30 text-xs text-gray-700 focus:border-amber-500 focus:ring-amber-500" placeholder="e.g. Labor Fees, Installation...">
-                                            @else
-                                                <label class="block text-[10px] text-gray-400 font-bold uppercase">Product Item</label>
-                                                <select wire:model.live="editItems.{{ $idx }}.product_id" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700">
-                                                    <option value="">-- Choose Product --</option>
-                                                    @foreach($this->getProductsList() as $p)
-                                                        <option value="{{ $p->id }}">{{ $p->name }} (SKU: {{ $p->sku }})</option>
-                                                    @endforeach
-                                                </select>
-                                            @endif
-                                        </div>
-                                        <div>
-                                            <label class="block text-[10px] text-gray-400 font-bold uppercase">Quantity</label>
-                                            <input type="number" step="0.01" wire:model.live="editItems.{{ $idx }}.quantity" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700" required>
-                                        </div>
-                                        <div class="flex gap-2 items-center">
-                                            <div class="flex-1">
-                                                <label class="block text-[10px] text-gray-400 font-bold uppercase">Price per unit ($)</label>
-                                                <input type="number" step="0.01" wire:model.live="editItems.{{ $idx }}.unit_price" class="mt-1 block w-full rounded-xl border-gray-300 text-xs text-gray-700" required>
-                                            </div>
-                                            @if(count($editItems) > 1)
-                                                <button type="button" wire:click="removeEditItemLine({{ $idx }})" class="text-rose-500 hover:text-rose-700 font-bold text-base mt-4">&times;</button>
-                                            @endif
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                        </div>
-
-                        <!-- Calculations and Totals -->
-                        <div class="border-t border-gray-150 pt-4 flex flex-col items-end gap-2 text-sm">
-                            <div class="flex gap-8">
-                                <span class="text-gray-400 font-bold uppercase">Subtotal:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->editSubtotal, 2) }}</span>
-                            </div>
-                            <div class="flex gap-8">
-                                <span class="text-gray-400 font-bold uppercase">Tax:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->editCalculatedTax, 2) }}</span>
-                            </div>
-                            <div class="flex gap-8">
-                                <span class="text-gray-400 font-bold uppercase">Shipping:</span>
-                                <span class="font-extrabold text-gray-900 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($editShippingAmount ?: 0, 2) }}</span>
-                            </div>
-                            <div class="flex gap-8 border-t border-gray-200 pt-2 text-base">
-                                <span class="text-gray-500 font-black uppercase">Final Total:</span>
-                                <span class="font-black text-indigo-600 font-mono">{{ setting('currency_symbol', '$') }}{{ number_format($this->editTotal, 2) }}</span>
-                            </div>
-                        </div>
-
-                        <!-- Submit actions -->
-                        <div class="mt-6 flex justify-end gap-3 pt-4 border-t border-gray-150">
-                            <button type="button" wire:click="$set('showEditModal', false)" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition-colors">Cancel</button>
-                            <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow">Save Changes</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    @endif
-
 </div>
-

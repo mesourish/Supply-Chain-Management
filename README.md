@@ -289,58 +289,89 @@ A custom, high-fidelity stock transfer module has been integrated into the **Man
 
 ## 🤖 Enterprise AI Modules
 
-The SCM ERP incorporates advanced Artificial Intelligence capabilities designed to optimize supply chain operations and minimize human error:
+The SCM ERP incorporates advanced Artificial Intelligence and mathematical forecasting capabilities designed to optimize supply chain operations and minimize human error:
 
-- **AI Demand Forecasting (Active):** Utilizes historical sales data and seasonal trend analysis to predict future inventory demand, automatically suggesting optimal restock quantities to prevent stockouts or overstocking.
-- **AI Supply Chain Co-Pilot (Upcoming):** An intelligent conversational assistant capable of answering complex natural language queries about supplier reliability, low-stock risks, and operational bottlenecks directly from the ERP database.
-- **Smart Document Extraction (Upcoming):** AI OCR models intended to automatically parse PDF invoices and supplier quotations, instantly extracting line items, prices, and totals to eliminate manual data entry.
-- **Supplier Risk Scoring (Upcoming):** A machine learning model that continuously evaluates supplier trust scores based on delivery delay patterns and defect rates to warn procurement officers before issuing massive Purchase Orders.
+- **AI Demand Forecasting & Interactive Simulation (Active):** Utilizes historical sales velocities and seasonal trend analysis to predict future inventory demand.
+  - **Interactive Safety Stock Simulator**: Administrators can adjust safety stock multiplier sliders (from 100% to 200%) to preview projected reorder level thresholds dynamically.
+  - **Dynamic Reorder Setting Application**: Write simulated limits directly back to the database with a single click.
+  - **Trend Visualizations**: Real-time depletion graphs plotted inside cards using lightweight responsive SVG sparklines.
+  - **Stockout Indicators**: Computes days remaining until stockout (`current stock / velocity`) with color-coded safety tags (Red/Amber/Green).
+  - **Bulk Auto-Generation POs**: Dynamically runs inventory audits, groups low-stock items by supplier, and builds draft POs in a single step.
+- **AI Supply Chain Co-Pilot (Upcoming):** An intelligent conversational assistant capable of answering complex queries about supplier reliability, stockout risks, and operational bottlenecks.
+- **Smart Document Extraction (Upcoming):** AI OCR models intended to automatically parse PDF invoices and supplier quotations to eliminate manual data entry.
+- **Supplier Risk Scoring (Upcoming):** A machine learning model that continuously evaluates supplier trust scores based on delivery delay patterns and defect rates.
+
+---
+
+## 📖 User Manuals
+
+To make the system simple and operational for any organization, comprehensive user manuals are compiled in multiple formats and embedded directly inside the software:
+
+* **Interactive Documentation & FAQ**: Accessible directly at `/faq` inside the ERP portal.
+* **[Printable A4 PDF User Manual (PDF)](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/public/user_manual.pdf)**: Located in the public folder (`public/user_manual.pdf`).
+* **[Word Document User Manual (DOCX)](file:///Applications/XAMPP/xamppfiles/htdocs/scm-erp/public/user_manual.docx)**: Located in the public folder (`public/user_manual.docx`).
+* **Manual Generator Command**: Build both manual formats dynamically from the database using:
+  ```bash
+  php artisan manual:generate
+  ```
 
 ---
 
 ## 🌟 Key Features Summary
 
+### 🏭 Manufacturing & Bill of Materials (BOM)
+- **BOM Recipe Builder**: Dynamic drawer interface to map finished goods SKU outputs to multiple raw component materials and quantities.
+- **Manufacturing Orders (MO) Tracker**: Interactive pipeline status tracking (`Draft`, `Confirmed`, `In Progress`, `Quality Check`, `Completed`).
+- **Shortage Audits**: Real-time validation checks for component stock before completing production.
+- **Automated Cascade Engine**: Upon order completion, the system automatically decrements components, increments finished stock, logs inventory transactions, raises quality control holds, and posts balanced entries to the General Ledger.
+
+### 🔬 Quality Control (QC)
+- **Automatic Compliance holds**: Incoming GRN shipments and completed MOs are automatically locked under pending inspection.
+- **Inspector Console**: Audits findings, inspects physical items, records details, and logs passed/failed states.
+- **Status Alerts**: Direct feedback loops that release cargo or notify production teams once stock clears inspection.
+
 ### 📦 Procurement & Suppliers
-- **Supplier Directory:** Comprehensive management of vendor details and performance metrics.
-- **Request for Quotation (RFQ):** Dispatch items to multiple suppliers and record vendor pricing side-by-side.
-- **Purchase Orders (POs):** Generate, approve, and track POs.
-- **Goods Receipt Notes (GRN):** Log incoming deliveries against POs with partial receipt support.
+- **Supplier Directory**: Comprehensive management of vendor details, primary contacts, and geographic addresses.
+- **Request for Quotation (RFQ)**: Dispatch items to multiple suppliers and record vendor pricing side-by-side.
+- **Purchase Orders (POs)**: Generate, approve, and track POs.
+- **Goods Receipt Notes (GRN)**: Fully redesigned premium GRN intake cards, featuring progressive reception bars and active manufacturing shortage warning panels.
 
 ### 🏭 Inventory & Warehouse Management (WMS)
-- **Multi-Warehouse & Rack Tracking:** Define warehouses, zones, racks, rows, and individual bins.
-- **Stock Tracking:** Real-time inventory logs with `source` and `destination` bin traceability.
-- **Stock Take & Adjustments:** Perform routine inventory audits and manual discrepancy adjustments.
-- **Bin-to-Bin Stock Transfer Engine:** Transaction-guaranteed manual stock transfers with double-entry balance updates and comprehensive audit ledger logs.
+- **Multi-Warehouse & Rack Tracking**: Define warehouses, zones, racks, rows, and individual bins.
+- **Stock Tracking**: Real-time inventory logs with `source` and `destination` bin traceability.
+- **Stock Take & Adjustments**: Perform routine inventory audits and manual discrepancy adjustments.
+- **Bin-to-Bin Stock Transfer Engine**: Transaction-guaranteed manual stock transfers with double-entry balance updates and comprehensive audit ledger logs.
 
 ### 💼 Sales & CRM
-- **CRM Kanban Board:** Beautiful lead capture columns ("New", "Contacted", "Proposal", "Negotiation", "Won", "Lost") to track opportunities.
-- **CRM Details Overlay:** High-fidelity opportunity detail modal with chronological interaction logs, A4 lead sheet printing, and direct SCM conversions.
-- **Quotation Kanban Board:** Interactive, drag-and-drop quotation pipeline (`Draft`, `Sent`, `Accepted`, `Rejected`) with live deal volume trackers.
-- **CRM Opportunity Converter:** One-click conversion from CRM Lead to draft Quotations with automatic `QuotationItem` line items, stage changes to `proposal` (60% probability), and CRM activity logging.
-- **SCM Cascade Engine:** Automatic conversion of `Accepted` quotes into standard B2B Sales Orders, mapping polymorphic contacts and billing/shipping address IDs, updating linked leads to `won` (100% probability), and initiating stock reservations.
+- **CRM Kanban Board**: Beautiful lead capture columns ("New", "Contacted", "Proposal", "Negotiation", "Won", "Lost") to track opportunities.
+- **CRM Details Overlay**: High-fidelity opportunity detail modal with chronological interaction logs, A4 lead sheet printing, and direct SCM conversions.
+- **Quotation Kanban Board**: Interactive, drag-and-drop quotation pipeline (`Draft`, `Sent`, `Accepted`, `Rejected`) with live deal volume trackers.
+- **CRM Opportunity Converter**: One-click conversion from CRM Lead to draft Quotations with automatic `QuotationItem` line items, stage changes to `proposal` (60% probability), and CRM activity logging.
+- **SCM Cascade Engine**: Automatic conversion of `Accepted` quotes into standard B2B Sales Orders, mapping polymorphic contacts and billing/shipping address IDs, updating linked leads to `won` (100% probability), and initiating stock reservations.
 - **A4 Corporate Letterhead Isolation**: Native print isolator overlays and SHA-256 ERP verification hashes for invoices, quotations, and sales order summaries.
-- **Lead Auto-Conversion:** Instantly convert won leads into Customer Profiles and draft Quotations.
-- **Quotation Engine:** Dynamic tax, discount, and landed cost estimations.
-- **Sales Orders (SOs):** Pick, pack, and ship items directly from assigned inventory bins.
-- **Returns (RMA):** Process and log customer returns directly into inventory.
+- **Lead Auto-Conversion**: Instantly convert won leads into Customer Profiles and draft Quotations.
+- **Quotation Engine**: Dynamic tax, discount, and landed cost estimations.
+- **Sales Orders (SOs)**: Pick, pack, and ship items directly from assigned inventory bins.
+- **Returns (RMA)**: Process and log customer returns directly into inventory.
 
 ### 🚚 Fleet & Logistics
-- **Driver & Vehicle Management:** Log active vehicles, drivers, and asset schedules.
-- **Shipment Tracking:** Assign drivers to specific fulfillment orders and track delivery statuses.
+- **Driver & Vehicle Management**: Log active vehicles, drivers, and asset schedules.
+- **Shipment Tracking**: Assign drivers to specific fulfillment orders and track delivery statuses.
 
-### 💳 Finance & Accounting
-- **Interactive Invoice CRUD:** Full invoice editing, deleting, dynamic detail sheets, and custom PDF generator.
-- **Accounts Payable (AP):** Track supplier bills, split payments, and upload receipts.
-- **Accounts Receivable (AR):** Manage customer invoices, split payments, and record transactions.
+### 💳 Finance, Accounting & General Ledger (GL)
+- **Double-Entry General Ledger**: Immutable journal logs tracking debits and credits across assets, payables, receivables, and revenue.
+- **Interactive Invoice CRUD**: Full invoice editing, deleting, dynamic detail sheets, and custom PDF generator.
+- **Accounts Payable (AP)**: Track supplier bills, split payments, and upload receipts.
+- **Accounts Receivable (AR)**: Manage customer invoices, split payments, and record transactions.
 - **Bidirectional Payment Sync**: Accounts Receivable dynamically updates linked Invoices upon payment logs. Invoices propagate manual toggles back to receivables, and automatically create a `PaymentLog` entry for any outstanding balance when marked `paid`.
-- **Self-Healing Payment Observers:** Static `PaymentLog` lifecycle hooks automatically recalculate and update parent receivable/payable balances and statuses (`paid`, `partial`, `unpaid`) upon saves or deletions, preventing stale data.
-- **Outstanding Progress Bar:** Dynamic, real-time receivables status meter in the primary SCM dashboard.
-- **Payment Certificate Compiler:** Generates custom-itemized corporate receipts for selected payments in PDF format.
+- **Self-Healing Payment Observers**: Static `PaymentLog` lifecycle hooks automatically recalculate and update parent receivable/payable balances and statuses (`paid`, `partial`, `unpaid`) upon saves or deletions, preventing stale data.
+- **Outstanding Progress Bar**: Dynamic, real-time receivables status meter in the primary SCM dashboard.
+- **Payment Certificate Compiler**: Generates custom-itemized corporate receipts for selected payments in PDF format.
 
 ### 🛡️ System Administration & Local Hosting
-- **FixSubfolderIntendedUrl Middleware:** Solves XAMPP session-expiration redirect bypass bug under subdirectory installations (e.g. `/scm-erp/`).
-- **Dynamic Filters:** Real-time timezone middleware integration and dashboard financial reporting interval parameters.
-- **Root Redirection:** Automatic guest fallback from `/` to named route `'login'` with obsolete file clean-ups.
+- **FixSubfolderIntendedUrl Middleware**: Solves XAMPP session-expiration redirect bypass bug under subdirectory installations (e.g. `/scm-erp/`).
+- **Dynamic Filters**: Real-time timezone middleware integration and dashboard financial reporting interval parameters.
+- **Root Redirection**: Automatic guest fallback from `/` to named route `'login'` with obsolete file clean-ups.
 
 ---
 

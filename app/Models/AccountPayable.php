@@ -10,6 +10,19 @@ class AccountPayable extends Model
 
     protected $fillable = ['purchase_order_id', 'supplier_id', 'amount', 'status', 'attachment_path'];
 
+    protected static function booted()
+    {
+        static::saved(function ($accountPayable) {
+            if ($accountPayable->wasRecentlyCreated) {
+                try {
+                    \App\Helpers\AccountingJournalHelper::postGoodsReceiptReceived($accountPayable);
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error("AccountPayable GL posting failed: " . $e->getMessage());
+                }
+            }
+        });
+    }
+
     public function purchaseOrder()
     {
         return $this->belongsTo(PurchaseOrder::class);

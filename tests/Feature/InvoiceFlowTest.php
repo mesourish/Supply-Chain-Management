@@ -39,7 +39,7 @@ class InvoiceFlowTest extends TestCase
         foreach ($invoices as $invoice) {
             $response->assertSee('INV-#' . $invoice->id);
             // Assert that action buttons exist
-            $response->assertSee('wire:click="viewInvoice(' . $invoice->id . ')"', false);
+            $response->assertSee('/pdf/invoice/' . $invoice->id, false);
             $response->assertSee('wire:click="editInvoice(' . $invoice->id . ')"', false);
             $response->assertSee('wire:click="changeStatus(' . $invoice->id . ')"', false);
             $response->assertSee('wire:click="deleteInvoice(' . $invoice->id . ')"', false);

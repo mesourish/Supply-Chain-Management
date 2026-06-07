@@ -71,7 +71,12 @@ $fulfill = function (SalesOrder $so) {
 };
 
 $viewInvoice = function (Invoice $invoice) {
-    $this->selectedInvoice = Invoice::with(['salesOrder.customer', 'salesOrder.items.product'])->find($invoice->id);
+    $this->selectedInvoice = Invoice::with([
+        'salesOrder.customer',
+        'salesOrder.items.product',
+        'customer',
+        'items.product'
+    ])->find($invoice->id);
     $this->showInvoiceModal = true;
 };
 
@@ -83,6 +88,18 @@ $confirmFulfillment = function () {
     ], [
         'bin_id.required' => 'You must select a warehouse bin to pick items from.'
     ]);
+
+    // Validate stock is sufficient for all items
+    foreach ($this->selectedSo->items as $item) {
+        $stock = \App\Models\BinProductStock::where('warehouse_bin_id', $this->bin_id)
+            ->where('product_id', $item->product_id)
+            ->first();
+            
+        if (!$stock || $stock->quantity < $item->quantity) {
+            $this->addError('bin_id', 'The selected warehouse bin has insufficient stock for one or more items.');
+            return;
+        }
+    }
 
     DB::transaction(function () {
         // 1. Update SO status
@@ -220,7 +237,7 @@ $confirmFulfillment = function () {
                                     <tr>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">INV-#{{ $invoice->id }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            SO-#{{ $invoice->sales_order_id }}
+                                            {{ $invoice->sales_order_id ? 'SO-#' . $invoice->sales_order_id : 'Manual Invoice' }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ setting('currency_symbol', '$') }}{{ number_format($invoice->amount, 2) }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $invoice->created_at->format(setting('date_format', 'Y-m-d') . ' ' . setting('time_format', 'H:i')) }}</td>
@@ -310,15 +327,15 @@ $confirmFulfillment = function () {
                 <div class="grid grid-cols-2 gap-6 mb-6 text-sm">
                     <div>
                         <h4 class="font-semibold text-gray-500 uppercase text-xs tracking-wider mb-2">Billed To</h4>
-                        <p class="font-bold text-gray-800">{{ $selectedInvoice->salesOrder->customer->name ?? 'N/A' }}</p>
-                        <p class="text-gray-600">{{ $selectedInvoice->salesOrder->customer->email ?? '' }}</p>
-                        <p class="text-gray-600">{{ $selectedInvoice->salesOrder->customer->phone ?? '' }}</p>
+                        <p class="font-bold text-gray-800">{{ $selectedInvoice->salesOrder?->customer?->name ?? $selectedInvoice->customer?->name ?? 'N/A' }}</p>
+                        <p class="text-gray-600">{{ $selectedInvoice->salesOrder?->customer?->email ?? $selectedInvoice->customer?->email ?? '' }}</p>
+                        <p class="text-gray-600">{{ $selectedInvoice->salesOrder?->customer?->phone ?? $selectedInvoice->customer?->phone ?? '' }}</p>
                     </div>
                     <div class="text-right">
                         <h4 class="font-semibold text-gray-500 uppercase text-xs tracking-wider mb-2">Invoice Details</h4>
                         <p><span class="text-gray-500 mr-2">Status:</span> <span class="font-bold text-indigo-600 uppercase">{{ $selectedInvoice->status }}</span></p>
                         <p><span class="text-gray-500 mr-2">Date:</span> {{ $selectedInvoice->created_at->format(setting('date_format', 'Y-m-d')) }}</p>
-                        <p><span class="text-gray-500 mr-2">Reference SO:</span> SO-#{{ $selectedInvoice->sales_order_id }}</p>
+                        <p><span class="text-gray-500 mr-2">Reference SO:</span> {{ $selectedInvoice->sales_order_id ? 'SO-#' . $selectedInvoice->sales_order_id : 'Manual Invoice' }}</p>
                     </div>
                 </div>
 
@@ -333,9 +350,14 @@ $confirmFulfillment = function () {
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200">
-                            @foreach($selectedInvoice->salesOrder->items as $item)
+                            @foreach(($selectedInvoice->salesOrder ? $selectedInvoice->salesOrder->items : $selectedInvoice->items) as $item)
                             <tr>
-                                <td class="px-4 py-2 text-sm text-gray-800">{{ $item->product->name }} <br><span class="text-xs text-gray-500">{{ $item->product->sku }}</span></td>
+                                <td class="px-4 py-2 text-sm text-gray-800">
+                                    {{ $item->product?->name ?? $item->description ?? 'Custom Item' }}
+                                    @if($item->product?->sku)
+                                        <br><span class="text-xs text-gray-500">{{ $item->product->sku }}</span>
+                                    @endif
+                                </td>
                                 <td class="px-4 py-2 text-sm text-gray-600 text-right">{{ $item->quantity }}</td>
                                 <td class="px-4 py-2 text-sm text-gray-600 text-right">{{ setting('currency_symbol', '$') }}{{ number_format($item->unit_price, 2) }}</td>
                                 <td class="px-4 py-2 text-sm text-gray-800 text-right font-medium">{{ setting('currency_symbol', '$') }}{{ number_format($item->total_price, 2) }}</td>

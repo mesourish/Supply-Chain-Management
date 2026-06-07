@@ -11,6 +11,8 @@ use App\Models\Customer;
 use App\Models\PurchaseOrder;
 use App\Models\SalesOrder;
 use App\Models\Vehicle;
+use App\Models\Driver;
+use App\Models\Project;
 use App\Models\Shipment;
 use App\Jobs\ProcessDataImportJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -442,5 +444,325 @@ class ComprehensiveModulesTest extends TestCase
 
         // Payment logs sum must cover full 15000.00
         $this->assertEquals(15000.00, $receivable->payments()->sum('amount'));
+    }
+
+    /**
+     * Test 11: Auto-GRN, stock and accounts payable synchronization on received PO update
+     */
+    public function test_purchase_order_update_auto_grn_sync()
+    {
+        $admin = User::where('email', 'admin@example.com')->first();
+        $this->actingAs($admin);
+
+        $supplier = Supplier::first();
+        $product = Product::first();
+        $warehouse = \App\Models\Warehouse::first();
+        $bin = \App\Models\WarehouseBin::where('warehouse_id', $warehouse->id)->first();
+
+        // 1. Create an approved PurchaseOrder with an item
+        $po = PurchaseOrder::create([
+            'supplier_id' => $supplier->id,
+            'status' => 'approved',
+            'subtotal' => 100.00,
+            'total_amount' => 100.00,
+            'gst_percentage' => 0,
+            'gst_amount' => 0.00,
+            'gst_type' => 'exclusive',
+            'approval_status' => 'approved',
+        ]);
+
+        $poItem = $po->items()->create([
+            'product_id' => $product->id,
+            'quantity' => 10,
+            'unit_price' => 10.00,
+            'received_quantity' => 0,
+        ]);
+
+        // 2. Receive the PO fully (simulate Goods Receipt Note creation)
+        $grn = \App\Models\GoodsReceiptNote::create([
+            'purchase_order_id' => $po->id,
+            'user_id' => $admin->id,
+            'status' => 'received',
+            'notes' => 'Initial full receipt.',
+        ]);
+
+        $poItem->update(['received_quantity' => 10]);
+        $po->update(['status' => 'received']);
+
+        \App\Models\InventoryTransaction::create([
+            'product_id' => $product->id,
+            'from_bin_id' => null,
+            'to_bin_id' => $bin->id,
+            'type' => 'IN',
+            'quantity' => 10,
+            'reference_type' => \App\Models\GoodsReceiptNote::class,
+            'reference_id' => $grn->id,
+            'notes' => 'Received via GRN #' . $grn->id,
+            'user_id' => $admin->id,
+        ]);
+
+        $binStock = \App\Models\BinProductStock::updateOrCreate(
+            ['warehouse_bin_id' => $bin->id, 'product_id' => $product->id],
+            ['quantity' => 10, 'unit_cost' => 10.00]
+        );
+
+        \App\Models\AccountPayable::create([
+            'purchase_order_id' => $po->id,
+            'supplier_id' => $supplier->id,
+            'amount' => 100.00,
+            'status' => 'unpaid',
+        ]);
+
+        // Verify initial quantities in DB
+        $this->assertEquals(10, \App\Models\BinProductStock::where('warehouse_bin_id', $bin->id)->where('product_id', $product->id)->value('quantity'));
+        $this->assertEquals(1, \App\Models\GoodsReceiptNote::where('purchase_order_id', $po->id)->count());
+        $this->assertEquals(1, \App\Models\AccountPayable::where('purchase_order_id', $po->id)->count());
+
+        // 3. Edit the PO via Volt Livewire component, changing quantity from 10 to 15
+        \Livewire\Volt\Volt::test('procurement.purchase-orders.index')
+            ->set('orderId', $po->id)
+            ->set('supplier_id', $supplier->id)
+            ->set('status', 'received')
+            ->set('currency_code', 'USD')
+            ->set('gst_type', 'exclusive')
+            ->set('gst_percentage', 0)
+            ->set('items', [
+                ['product_id' => $product->id, 'quantity' => 15, 'unit_price' => 10.00]
+            ])
+            ->call('save')
+            ->assertHasNoErrors();
+
+        // 4. Assert that the sync engine reversed old stock and updated everything to 15!
+        $this->assertEquals(15, \App\Models\BinProductStock::where('warehouse_bin_id', $bin->id)->where('product_id', $product->id)->value('quantity'));
+        
+        // Assert there is still exactly 1 clean GRN and 1 clean AccountPayable with updated total
+        $this->assertEquals(1, \App\Models\GoodsReceiptNote::where('purchase_order_id', $po->id)->count());
+        $this->assertEquals(1, \App\Models\AccountPayable::where('purchase_order_id', $po->id)->count());
+        $this->assertEquals(150.00, \App\Models\AccountPayable::where('purchase_order_id', $po->id)->value('amount'));
+
+        // Assert the new GRN is generated and PO received quantity is updated
+        $newGrn = \App\Models\GoodsReceiptNote::where('purchase_order_id', $po->id)->first();
+        $this->assertEquals('received', $po->fresh()->status);
+        $this->assertEquals(15, $po->fresh()->items->first()->received_quantity);
+    }
+
+    /**
+     * Test 12: Action timeline logging notes and spelled-out currency totals
+     */
+    public function test_system_log_action_timeline_notes_and_spelled_out_currencies()
+    {
+        $admin = User::where('email', 'admin@example.com')->first();
+        $this->actingAs($admin);
+
+        $po = PurchaseOrder::first();
+
+        // 1. Test logging supplier action with notes updates PO log and system log
+        \Livewire\Volt\Volt::test('procurement.purchase-orders.index')
+            ->set('orderId', $po->id)
+            ->set('supplierNotes', 'Need 10 more days for shipping delivery.')
+            ->call('logSupplierAction', 'supplier_want_changes');
+
+        // Confirm purchase order log exists with notes
+        $log = \App\Models\PurchaseOrderLog::where('purchase_order_id', $po->id)
+            ->where('action', 'supplier_want_changes')
+            ->first();
+        $this->assertNotNull($log);
+        $this->assertEquals('Need 10 more days for shipping delivery.', $log->notes);
+
+        // Confirm system log exists with notes details
+        $sysLog = \App\Models\SystemLog::where('action', 'po_supplier_action')
+            ->where('description', 'like', '%Need 10 more days for shipping delivery.%')
+            ->first();
+        $this->assertNotNull($sysLog);
+
+        // 2. Test PDF stream works with spellout helper and different currencies
+        $invoice = \App\Models\Invoice::create([
+            'customer_id' => \App\Models\Customer::first()->id,
+            'amount' => 1234.56,
+            'status' => 'unpaid',
+            'currency_code' => 'AED',
+        ]);
+        
+        $invoice->items()->create([
+            'description' => 'Service item',
+            'quantity' => 1,
+            'unit_price' => 1234.56,
+        ]);
+
+        $pdfController = new \App\Http\Controllers\PdfExportController();
+        $response = $pdfController->invoice($invoice);
+        $this->assertNotNull($response);
+    }
+
+    /**
+     * Test 13: Advanced Fleet health score, predictive engines, fuel theft detection, and equipment billing
+     */
+    public function test_advanced_fleet_health_score_and_predictive_maintenance_engines()
+    {
+        $admin = User::where('email', 'admin@example.com')->first();
+        $this->actingAs($admin);
+
+        $vehicle = Vehicle::where('license_plate', 'DXB-G-55891')->first(); // Scania
+        $driver = Driver::first();
+        $project = Project::first();
+
+        // 1. Assert predictive maintenance and fuel anomaly are seeded
+        $this->assertGreaterThan(0, $vehicle->predictiveMaintenances()->count());
+        $this->assertGreaterThan(0, $vehicle->fuelAnomalies()->count());
+
+        // 2. Test Livewire Volt dashboard component actions: Equipment Billing
+        \Livewire\Volt\Volt::test('logistics.vehicles.index')
+            ->set('billVehicleId', $vehicle->id)
+            ->set('billProjectId', $project->id)
+            ->set('billHours', 10)
+            ->set('billRate', 100)
+            ->call('submitEquipmentBilling')
+            ->assertHasNoErrors();
+
+        // Assert charge record created with total charge of 1000.00
+        $charge = \App\Models\EquipmentUsageCharge::where('vehicle_id', $vehicle->id)
+            ->where('project_id', $project->id)
+            ->where('usage_hours', 10)
+            ->first();
+        $this->assertNotNull($charge);
+        $this->assertEquals(1000.00, $charge->total_charge);
+
+        // Assert fleet expense created automatically
+        $expense = \App\Models\FleetExpense::where('vehicle_id', $vehicle->id)
+            ->where('project_id', $project->id)
+            ->where('amount', 1000.00)
+            ->first();
+        $this->assertNotNull($expense);
+
+        // 4. Test Vehicle Handover Damage Audit
+        \Livewire\Volt\Volt::test('logistics.vehicles.index')
+            ->set('auditVehicleId', $vehicle->id)
+            ->set('auditDriverId', $driver->id)
+            ->set('beforeScratches', 1)
+            ->set('afterScratches', 3) // new scratches
+            ->set('beforeDents', 0)
+            ->set('afterDents', 1) // new dent
+            ->call('submitDamageAudit')
+            ->assertHasNoErrors();
+
+        // Assert review_pending status due to new damage
+        $audit = \App\Models\VehicleDamageAudit::where('vehicle_id', $vehicle->id)
+            ->where('driver_id', $driver->id)
+            ->where('after_trip_scratches', 3)
+            ->first();
+        $this->assertNotNull($audit);
+        $this->assertEquals('review_pending', $audit->status);
+
+        // 5. Test Fleet Marketplace Transfer Requests
+        $toProject = Project::where('id', '!=', $project->id)->first();
+        \Livewire\Volt\Volt::test('logistics.vehicles.index')
+            ->set('transferVehicleId', $vehicle->id)
+            ->set('transferFromProjectId', $project->id)
+            ->set('transferToProjectId', $toProject->id)
+            ->call('submitMarketplaceTransfer')
+            ->assertHasNoErrors();
+
+        $transfer = \App\Models\FleetMarketplaceTransfer::where('vehicle_id', $vehicle->id)
+            ->where('from_project_id', $project->id)
+            ->where('to_project_id', $toProject->id)
+            ->first();
+        $this->assertNotNull($transfer);
+        $this->assertEquals('requested', $transfer->status);
+    }
+
+    /**
+     * Test: Fleet Granular Permissions Enforcement
+     */
+    public function test_fleet_granular_permissions_enforcement()
+    {
+        $vehicle = Vehicle::where('license_plate', 'DXB-G-55891')->first();
+        $project = Project::first();
+
+        // Create a plain user and assign view vehicles permission
+        $user = User::create([
+            'name' => 'Logistics Operator',
+            'email' => 'operator@example.com',
+            'password' => bcrypt('password')
+        ]);
+        $user->givePermissionTo('view vehicles');
+        
+        $this->actingAs($user);
+
+        // Assert that they are blocked from equipment billing
+        \Livewire\Volt\Volt::test('logistics.vehicles.index')
+            ->set('billVehicleId', $vehicle->id)
+            ->set('billProjectId', $project->id)
+            ->set('billHours', 10)
+            ->set('billRate', 100)
+            ->call('submitEquipmentBilling')
+            ->assertStatus(403);
+
+        // Grant permission and assert success
+        $user->givePermissionTo('manage equipment_billing');
+
+        \Livewire\Volt\Volt::test('logistics.vehicles.index')
+            ->set('billVehicleId', $vehicle->id)
+            ->set('billProjectId', $project->id)
+            ->set('billHours', 10)
+            ->set('billRate', 100)
+            ->call('submitEquipmentBilling')
+            ->assertStatus(200);
+    }
+
+    /**
+     * Test 15: Vehicle create/edit UI and modal close events
+     */
+    public function test_vehicle_create_and_edit_modal_flow()
+    {
+        $admin = User::where('email', 'admin@example.com')->first();
+        $this->actingAs($admin);
+
+        // Test creation
+        \Livewire\Volt\Volt::test('logistics.vehicles.index')
+            ->set('license_plate', 'TEST-VEH-100')
+            ->set('brand', 'Tesla')
+            ->set('model', 'Model Y')
+            ->set('year', 2023)
+            ->set('type', 'van')
+            ->set('capacity', 1200)
+            ->set('status', 'available')
+            ->set('purchase_cost', 50000)
+            ->set('purchase_date', '2023-01-01')
+            ->set('lifecycle_stage', 'active')
+            ->call('save')
+            ->assertHasNoErrors()
+            ->assertDispatched('close-create-modal')
+            ->assertDispatched('toast', type: 'success', message: 'Vehicle Created Successfully.');
+
+        $vehicle = Vehicle::where('license_plate', 'TEST-VEH-100')->first();
+        $this->assertNotNull($vehicle);
+        $this->assertEquals('Tesla', $vehicle->brand);
+
+        // Test editing loading state
+        \Livewire\Volt\Volt::test('logistics.vehicles.index')
+            ->call('edit', $vehicle->id)
+            ->assertSet('vehicleId', $vehicle->id)
+            ->assertSet('brand', 'Tesla')
+            ->assertSet('isEditing', true);
+
+        // Test updating
+        \Livewire\Volt\Volt::test('logistics.vehicles.index')
+            ->set('vehicleId', $vehicle->id)
+            ->set('license_plate', 'TEST-VEH-100')
+            ->set('brand', 'Tesla Motors')
+            ->set('model', 'Model Y')
+            ->set('year', 2023)
+            ->set('type', 'van')
+            ->set('capacity', 1200)
+            ->set('status', 'available')
+            ->set('purchase_cost', 50000)
+            ->set('purchase_date', '2023-01-01')
+            ->set('lifecycle_stage', 'active')
+            ->call('save')
+            ->assertHasNoErrors()
+            ->assertDispatched('close-create-modal')
+            ->assertDispatched('toast', type: 'success', message: 'Vehicle Updated Successfully.');
+
+        $this->assertEquals('Tesla Motors', $vehicle->fresh()->brand);
     }
 }
